@@ -68,7 +68,7 @@ func newTestChatServer(t *testing.T, llmBaseURL string) *httptest.Server {
 	engine := retrieve.NewRetrievalEngine(cfg.RAG,
 		retrieve.NewMultiChannelEngine([]retrieve.SearchChannel{rec}, nil), prompts)
 	pl := NewSimplePipeline(cfg, memSvc, llmSvc, prompts, engine, nil, nil, nil)
-	h := NewSimpleChatHandler(cfg, pl)
+	h := NewSimpleChatHandler(cfg, pl, nil)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

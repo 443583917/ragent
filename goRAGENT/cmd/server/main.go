@@ -25,6 +25,7 @@ import (
 	"goRAGENT/internal/framework/snowflake"
 	"goRAGENT/internal/infra/embedding"
 	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/framework/ratelimit"
 	"goRAGENT/internal/infra/mineru"
 	"goRAGENT/internal/infra/rerank"
 	"goRAGENT/internal/ingestion"
@@ -139,7 +140,7 @@ func main() {
 		zap.L().Info("MCP 已启用", zap.Int("servers", len(cfg.Mcp.Servers)))
 	}
 
-	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline)
+	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline, db)
 
 	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
 	adminH := admin.NewHandler(db).
@@ -148,6 +149,18 @@ func main() {
 		SetMilvusStore(mvStore).
 		SetIngestionEngine(ingestionEngine).
 		SetDataDir(cfg.Mineru.DataDir)
+
+	// M6: 分布式限流
+	var chatLimiter *ratelimit.Limiter
+	if rdb != nil {
+		chatLimiter = ratelimit.NewLimiter(rdb, ratelimit.Config{
+			Enabled:        true,
+			MaxConcurrent:  10,
+			MaxWaitSeconds: 15,
+			LeaseSeconds:   30,
+			PollIntervalMs: 200,
+		})
+	}
 
 	// ====== 路由 ======
 	gin.SetMode(map[bool]string{true: gin.DebugMode, false: gin.ReleaseMode}[cfg.App.Debug])
@@ -163,14 +176,25 @@ func main() {
 api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
 
 	// 示例问题（无需 JWT）
-	api.GET("/rag/sample-questions", func(c *gin.Context) {
-		c.JSON(200, gin.H{"code": "0", "data": []gin.H{}})
-	})
+	api.GET("/rag/sample-questions", adminH.GetSampleQuestionsPublic)
 
-	// RAG 对话（JWT）
+	// RAG 对话（JWT + 限流）
 	ragV3 := api.Group("/rag/v3")
 	ragV3.Use(jwt.Middleware(cfg.SaToken.TokenName))
-	ragV3.GET("/chat", chatHandler.StreamChat)
+	ragV3.GET("/chat", func(c *gin.Context) {
+		if chatLimiter != nil {
+			taskID := c.Query("taskId") // will be generated in handler
+			pos, _, ok := chatLimiter.TryAcquire(taskID)
+			if !ok {
+				c.JSON(429, gin.H{"code": "C000001", "message": "系统繁忙"})
+				return
+			}
+			if pos > 0 {
+				_ = pos // position-based queuing handled in handler via WaitForSlot
+			}
+		}
+		chatHandler.StreamChat(c)
+	})
 	ragV3.POST("/stop", chatHandler.StopTask)
 
 	// 会话 + 消息 + 反馈（JWT，路径契约和前端 sessionService/chatService 一致）
@@ -205,22 +229,22 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.GET("/rag/settings", SettingsHandler(cfg))
 	api.PUT("/rag/settings", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
 	// Trace
-	api.GET("/rag/traces/runs", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.GET("/rag/traces/runs/:traceId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
-	api.GET("/rag/traces/runs/:traceId/nodes", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":[]gin.H{}}) })
+	api.GET("/rag/traces/runs", adminH.ListTraceRuns)
+	api.GET("/rag/traces/runs/:traceId", adminH.GetTraceDetail)
+	api.GET("/rag/traces/runs/:traceId/nodes", adminH.GetTraceNodes)
 	// 示例问题 CRUD
-	api.GET("/sample-questions", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.POST("/sample-questions", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
+	api.GET("/sample-questions", adminH.ListSampleQuestions)
+	api.POST("/sample-questions", adminH.CreateSampleQuestion)
 	// 关键词映射
 	api.GET("/mappings", adminH.ListMappings)
 	api.GET("/mappings/:id", adminH.GetMapping)
 	api.POST("/mappings", adminH.CreateMapping)
 	// 审计日志
-	api.GET("/biz-change-logs", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.GET("/biz-change-logs/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	api.GET("/biz-change-logs", adminH.ListBizChangeLogs)
+	api.GET("/biz-change-logs/:id", adminH.GetBizChangeLog)
 	// 用户管理
-	api.GET("/users", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.POST("/users", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.GET("/users", adminH.ListUsers)
+	api.POST("/users", adminH.CreateUser)
 	// 入库
 	api.GET("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
 	api.GET("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
@@ -235,10 +259,11 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.PATCH("/knowledge-base/docs/:docId/enable", adminH.ToggleDocument)
 	api.PUT("/mappings/:id", adminH.UpdateMapping)
 	api.DELETE("/mappings/:id", adminH.DeleteMapping)
-	api.PUT("/sample-questions/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.DELETE("/sample-questions/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.PUT("/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.DELETE("/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PUT("/sample-questions/:id", adminH.UpdateSampleQuestion)
+	api.DELETE("/sample-questions/:id", adminH.DeleteSampleQuestion)
+	api.PUT("/users/:id", adminH.UpdateUser)
+	api.DELETE("/users/:id", adminH.DeleteUser)
+	api.PATCH("/users/:id/password", adminH.ChangeUserPassword)
 	api.PUT("/intent-tree/:id", adminH.UpdateIntentNode)
 	api.DELETE("/intent-tree/:id", adminH.DeleteIntentNode)
 

@@ -167,3 +167,25 @@ CREATE TABLE IF NOT EXISTS t_ingestion_task (
     create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_biz_change_log (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    entity_type   VARCHAR(64)  NOT NULL COMMENT 'kb/document/chunk/intent/mapping/user',
+    entity_id     VARCHAR(64)  NOT NULL,
+    action        VARCHAR(32)  NOT NULL COMMENT 'CREATE/UPDATE/DELETE/ENABLE/DISABLE',
+    operator      VARCHAR(64),
+    before_snapshot TEXT,
+    after_snapshot  TEXT,
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_change_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_sample_question (
+    id          VARCHAR(32)  PRIMARY KEY,
+    question    VARCHAR(512) NOT NULL,
+    sort_order  INT          DEFAULT 0,
+    enabled     TINYINT      NOT NULL DEFAULT 1,
+    deleted     TINYINT      NOT NULL DEFAULT 0,
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

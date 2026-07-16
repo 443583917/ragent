@@ -1,8 +1,6 @@
 package admin
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"goRAGENT/internal/framework/response"
 	"goRAGENT/internal/ingestion"
@@ -115,10 +113,24 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 	users := r.Group("/users")
 	users.GET("", h.ListUsers)
+	users.POST("", h.CreateUser)
+	users.PUT("/:id", h.UpdateUser)
+	users.DELETE("/:id", h.DeleteUser)
+	users.PATCH("/:id/password", h.ChangeUserPassword)
 
 	traces := r.Group("/traces")
 	traces.GET("/runs", h.ListTraceRuns)
 	traces.GET("/runs/:runId", h.GetTraceDetail)
+
+	audit := r.Group("/biz-change-logs")
+	audit.GET("", h.ListBizChangeLogs)
+	audit.GET("/:id", h.GetBizChangeLog)
+
+	sq := r.Group("/sample-questions")
+	sq.GET("", h.ListSampleQuestions)
+	sq.POST("", h.CreateSampleQuestion)
+	sq.PUT("/:id", h.UpdateSampleQuestion)
+	sq.DELETE("/:id", h.DeleteSampleQuestion)
 }
 
 // dummy handlers
@@ -127,34 +139,11 @@ func okArr(c *gin.Context)             { c.JSON(200, response.Success([]gin.H{})
 func okID(c *gin.Context)              { c.JSON(200, response.Success(gin.H{"id": "1"})) }
 func okEmpty(c *gin.Context)           { c.JSON(200, response.SuccessOK()) }
 
-func (h *Handler) DashboardStats(c *gin.Context) {
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"totalConversations": 0, "totalMessages": 0, "totalKb": 0, "totalDocuments": 0,
-	}))
-}
-func (h *Handler) DashboardOverview(c *gin.Context) {
-	kpi := func(v float64, d float64) gin.H { return gin.H{"value": v, "deltaPct": d} }
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"kpis": gin.H{
-			"sessions24h": kpi(0, 0), "messages24h": kpi(0, 0),
-			"activeUsers": kpi(0, 0), "avgLatencyMs": kpi(0, 0),
-			"qualityScore": kpi(0, 0),
-		},
-		"topIntentNodes":     []gin.H{},
-		"recentConversations": []gin.H{},
-	}))
-}
-func (h *Handler) DashboardPerformance(c *gin.Context) {
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"p50Ms": 0, "p95Ms": 0, "p99Ms": 0,
-		"throughput": 0, "noDocRate": 0, "avgLatencyMs": 0,
-		"qualityScore": 0, "tokenTotal": 0, "tokenAvg": 0,
-		"errorRate": 0, "emptyRate": 0,
-	}))
-}
-func (h *Handler) DashboardTrends(c *gin.Context) {
-	c.JSON(http.StatusOK, response.Success(gin.H{"series": []gin.H{}}))
-}
+// Dashboard — real
+func (h *Handler) DashboardStats(c *gin.Context)       { h.dashboardStatsReal(c) }
+func (h *Handler) DashboardOverview(c *gin.Context)     { h.dashboardOverviewReal(c) }
+func (h *Handler) DashboardPerformance(c *gin.Context)  { h.dashboardPerformanceReal(c) }
+func (h *Handler) DashboardTrends(c *gin.Context)       { h.dashboardTrendsReal(c) }
 
 // Knowledge base — real
 func (h *Handler) ListKnowledgeBases(c *gin.Context)  { h.listKnowledgeBases(c) }
@@ -201,6 +190,27 @@ func (h *Handler) ListModels(c *gin.Context)           { okArr(c) }
 func (h *Handler) UpdateModel(c *gin.Context)          { okEmpty(c) }
 func (h *Handler) GetSettings(c *gin.Context)          { ok(c) }
 func (h *Handler) UpdateSettings(c *gin.Context)       { okEmpty(c) }
-func (h *Handler) ListUsers(c *gin.Context)            { okArr(c) }
-func (h *Handler) ListTraceRuns(c *gin.Context)        { okArr(c) }
-func (h *Handler) GetTraceDetail(c *gin.Context)       { ok(c) }
+
+// Users — real
+func (h *Handler) ListUsers(c *gin.Context) { h.listUsersReal(c) }
+
+// Trace — real
+func (h *Handler) ListTraceRuns(c *gin.Context)  { h.listTraceRunsReal(c) }
+func (h *Handler) GetTraceDetail(c *gin.Context) { h.getTraceDetailReal(c) }
+
+// Audit log — real
+func (h *Handler) ListBizChangeLogs(c *gin.Context) { h.listBizChangeLogs(c) }
+func (h *Handler) GetBizChangeLog(c *gin.Context)   { h.getBizChangeLog(c) }
+
+// Sample questions — real
+func (h *Handler) ListSampleQuestions(c *gin.Context)      { h.listSampleQuestions(c) }
+func (h *Handler) CreateSampleQuestion(c *gin.Context)     { h.createSampleQuestion(c) }
+func (h *Handler) UpdateSampleQuestion(c *gin.Context)     { h.updateSampleQuestion(c) }
+func (h *Handler) DeleteSampleQuestion(c *gin.Context)     { h.deleteSampleQuestion(c) }
+func (h *Handler) GetSampleQuestionsPublic(c *gin.Context) { h.getSampleQuestionsPublic(c) }
+
+// User mgmt — real
+func (h *Handler) CreateUser(c *gin.Context)        { h.createUser(c) }
+func (h *Handler) UpdateUser(c *gin.Context)        { h.updateUser(c) }
+func (h *Handler) DeleteUser(c *gin.Context)        { h.deleteUser(c) }
+func (h *Handler) ChangeUserPassword(c *gin.Context) { h.changePassword(c) }
