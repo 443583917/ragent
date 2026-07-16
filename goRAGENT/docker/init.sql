@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS t_biz_change_log (
 
 CREATE TABLE IF NOT EXISTS t_sample_question (
     id          VARCHAR(32)  PRIMARY KEY,
+    title       VARCHAR(256),
+    description VARCHAR(512),
     question    VARCHAR(512) NOT NULL,
     sort_order  INT          DEFAULT 0,
     enabled     TINYINT      NOT NULL DEFAULT 1,
