@@ -11,33 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type knowledgeBaseVO struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description,omitempty"`
-	EmbeddingModel string `json:"embeddingModel,omitempty"`
-	CollectionName string `json:"collectionName,omitempty"`
-	Dimension      int    `json:"dimension"`
-	CreateTime     string `json:"createTime"`
-}
-
-type knowledgeBaseCreateReq struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
-}
-
-type knowledgeBaseUpdateReq struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-}
-
-func kbDOtoVO(d model.KnowledgeBaseDO) knowledgeBaseVO {
-	return knowledgeBaseVO{
-		ID: d.ID, Name: d.Name, Description: d.Description,
-		EmbeddingModel: d.EmbeddingModel, CollectionName: d.CollectionName,
-		Dimension: d.Dimension, CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-	}
-}
+type knowledgeBaseVO = model.KnowledgeBaseVO
+type knowledgeBaseCreateReq = model.KnowledgeBaseCreateReq
+type knowledgeBaseUpdateReq = model.KnowledgeBaseUpdateReq
 
 func (h *Handler) listKnowledgeBases(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -56,7 +32,7 @@ func (h *Handler) listKnowledgeBases(c *gin.Context) {
 
 	vos := make([]knowledgeBaseVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, kbDOtoVO(d))
+		vos = append(vos, model.KnowledgeBaseDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -88,7 +64,7 @@ func (h *Handler) createKnowledgeBase(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "创建失败"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(kbDOtoVO(do)))
+	c.JSON(http.StatusOK, response.Success(model.KnowledgeBaseDOToVO(do)))
 }
 
 func (h *Handler) getKnowledgeBase(c *gin.Context) {
@@ -98,7 +74,7 @@ func (h *Handler) getKnowledgeBase(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "知识库不存在"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(kbDOtoVO(do)))
+	c.JSON(http.StatusOK, response.Success(model.KnowledgeBaseDOToVO(do)))
 }
 
 func (h *Handler) updateKnowledgeBase(c *gin.Context) {

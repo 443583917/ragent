@@ -10,16 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type bizChangeLogVO struct {
-	ID             int64  `json:"id"`
-	EntityType     string `json:"entityType"`
-	EntityID       string `json:"entityId"`
-	Action         string `json:"action"`
-	Operator       string `json:"operator"`
-	BeforeSnapshot string `json:"beforeSnapshot,omitempty"`
-	AfterSnapshot  string `json:"afterSnapshot,omitempty"`
-	CreateTime     string `json:"createTime"`
-}
+type bizChangeLogVO = model.BizChangeLogVO
 
 func (h *Handler) listBizChangeLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

@@ -11,62 +11,13 @@ import (
 )
 
 // ragTraceRunVO 匹配前端 RagTraceRun 类型
-type ragTraceRunVO struct {
-	TraceID        string `json:"traceId"`
-	TraceName      string `json:"traceName,omitempty"`
-	EntryMethod    string `json:"entryMethod,omitempty"`
-	ConversationID string `json:"conversationId,omitempty"`
-	TaskID         string `json:"taskId,omitempty"`
-	UserName       string `json:"userName,omitempty"`
-	Username       string `json:"username,omitempty"`
-	UserID         string `json:"userId,omitempty"`
-	Status         string `json:"status,omitempty"`
-	ErrorMessage   string `json:"errorMessage,omitempty"`
-	DurationMs     int64  `json:"durationMs,omitempty"`
-	TtftMs         int64  `json:"ttftMs,omitempty"`
-	Question       string `json:"question,omitempty"`
-	StartTime      string `json:"startTime,omitempty"`
-	EndTime        string `json:"endTime,omitempty"`
-}
+type ragTraceRunVO = model.RagTraceRunVO
 
 // ragTraceNodeVO 匹配前端 RagTraceNode 类型
-type ragTraceNodeVO struct {
-	TraceID      string `json:"traceId"`
-	NodeID       string `json:"nodeId"`
-	ParentNodeID string `json:"parentNodeId,omitempty"`
-	Depth        int    `json:"depth,omitempty"`
-	NodeType     string `json:"nodeType,omitempty"`
-	NodeName     string `json:"nodeName,omitempty"`
-	ClassName    string `json:"className,omitempty"`
-	MethodName   string `json:"methodName,omitempty"`
-	Status       string `json:"status,omitempty"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-	DurationMs   int64  `json:"durationMs,omitempty"`
-	StartTime    string `json:"startTime,omitempty"`
-	EndTime      string `json:"endTime,omitempty"`
-}
+type ragTraceNodeVO = model.RagTraceNodeVO
 
 // ragTraceDetailVO 匹配前端 RagTraceDetail 类型
-type ragTraceDetailVO struct {
-	Run   ragTraceRunVO   `json:"run"`
-	Nodes []ragTraceNodeVO `json:"nodes"`
-}
-
-func runDOtoVO(r model.TraceRunDO) ragTraceRunVO {
-	startTime := r.CreateTime.Format("2006-01-02 15:04:05")
-	endTime := r.UpdateTime.Format("2006-01-02 15:04:05")
-	if r.UpdateTime.Before(r.CreateTime) || r.UpdateTime.Equal(r.CreateTime) {
-		endTime = ""
-	}
-
-	return ragTraceRunVO{
-		TraceID: r.RunID, TraceName: "Chat", EntryMethod: "HTTP",
-		ConversationID: r.ConversationID, TaskID: r.RunID,
-		UserID: r.UserID, Username: r.UserID, UserName: r.UserID,
-		Status: r.Status, ErrorMessage: r.ErrorMessage,
-		Question: r.Question, StartTime: startTime, EndTime: endTime,
-	}
-}
+type ragTraceDetailVO = model.RagTraceDetailVO
 
 func (h *Handler) listTraceRunsReal(c *gin.Context) {
 	current, _ := strconv.Atoi(c.DefaultQuery("current", "1"))
@@ -98,7 +49,7 @@ func (h *Handler) listTraceRunsReal(c *gin.Context) {
 
 	vos := make([]ragTraceRunVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, runDOtoVO(d))
+		vos = append(vos, model.RunDOToVO(d))
 	}
 	if vos == nil {
 		vos = []ragTraceRunVO{}
@@ -133,7 +84,7 @@ func (h *Handler) getTraceDetailReal(c *gin.Context) {
 		nodeVOs = []ragTraceNodeVO{}
 	}
 
-	c.JSON(http.StatusOK, response.Success(ragTraceDetailVO{Run: runDOtoVO(run), Nodes: nodeVOs}))
+	c.JSON(http.StatusOK, response.Success(ragTraceDetailVO{Run: model.RunDOToVO(run), Nodes: nodeVOs}))
 }
 
 func (h *Handler) getTraceNodesReal(c *gin.Context) {

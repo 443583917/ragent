@@ -8,30 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"goRAGENT/pkg/response"
+	"goRAGENT/internal/model"
 	"go.uber.org/zap"
 )
 
-type userVO struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	Avatar   string `json:"avatar,omitempty"`
-}
-
-type userCreateReq struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	Role     string `json:"role"`
-}
-
-type userUpdateReq struct {
-	Role   *string `json:"role"`
-	Avatar *string `json:"avatar"`
-}
-
-type userPasswordReq struct {
-	Password string `json:"password" binding:"required"`
-}
+type userVO = model.UserVO
+type userCreateReq = model.UserCreateReq
+type userUpdateReq = model.UserUpdateReq
+type userPasswordReq = model.UserPasswordReq
 
 func (h *Handler) listUsersReal(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -83,8 +67,8 @@ func (h *Handler) createUser(c *gin.Context) {
 	if role == "" {
 		role = "user"
 	}
-	// MD5 hashing (same as user.go pattern)
-	pwdHash := md5Hash(req.Password)
+		// MD5 hashing (same as user.go pattern)
+	pwdHash := md5Hash(req.Password) // TODO: remove after Task 5
 
 	if err := h.db.WithContext(c.Request.Context()).Exec(
 		"INSERT INTO t_user (username, password, role) VALUES (?, ?, ?)", req.Username, pwdHash, role,

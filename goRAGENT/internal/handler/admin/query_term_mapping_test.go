@@ -9,7 +9,7 @@ import (
 
 func TestMappingToVO_EnabledIntToBool(t *testing.T) {
 	ts := time.Date(2026, 7, 17, 12, 0, 0, 0, time.Local)
-	vo := mappingToVO(model.TermMappingDO{
+	vo := model.MappingToVO(model.TermMappingDO{
 		ID: "m1", SourceTerm: "保司", TargetTerm: "保险公司",
 		MatchType: 1, Priority: 100, Enabled: 1, Remark: "备注",
 		CreateTime: ts, UpdateTime: ts,
@@ -24,7 +24,7 @@ func TestMappingToVO_EnabledIntToBool(t *testing.T) {
 		t.Errorf("时间格式错误: %q", vo.CreateTime)
 	}
 
-	vo2 := mappingToVO(model.TermMappingDO{ID: "m2", Enabled: 0})
+	vo2 := model.MappingToVO(model.TermMappingDO{ID: "m2", Enabled: 0})
 	if vo2.Enabled != false {
 		t.Errorf("enabled=0 应转为 false")
 	}
@@ -32,7 +32,7 @@ func TestMappingToVO_EnabledIntToBool(t *testing.T) {
 
 func TestMappingCreateReqToDO_Defaults(t *testing.T) {
 	req := mappingCreateReq{SourceTerm: "保司", TargetTerm: "保险公司"}
-	do := mappingCreateReqToDO(req, "id-1", "user-1")
+	do := model.MappingCreateReqToDO(req, "id-1", "user-1")
 	if do.ID != "id-1" || do.CreateBy != "user-1" {
 		t.Errorf("基础字段错误: %+v", do)
 	}
@@ -54,7 +54,7 @@ func TestMappingCreateReqToDO_ExplicitValues(t *testing.T) {
 		SourceTerm: "a", TargetTerm: "b",
 		MatchType: &mt, Priority: &pri, Enabled: &enabled, Remark: &remark,
 	}
-	do := mappingCreateReqToDO(req, "id", "u")
+	do := model.MappingCreateReqToDO(req, "id", "u")
 	if do.MatchType != 2 || do.Priority != 50 || do.Enabled != 0 || do.Remark != "r" {
 		t.Errorf("显式值应生效: %+v", do)
 	}
@@ -64,7 +64,7 @@ func TestMappingUpdateReqToUpdates_OnlyProvided(t *testing.T) {
 	enabled := false
 	target := "新目标"
 	req := mappingUpdateReq{TargetTerm: &target, Enabled: &enabled}
-	updates := mappingUpdateReqToUpdates(req, "user-2")
+	updates := model.MappingUpdateReqToUpdates(req, "user-2")
 	if updates["target_term"] != "新目标" || updates["enabled"] != 0 {
 		t.Errorf("提供字段应进 updates（enabled bool→int）: %+v", updates)
 	}

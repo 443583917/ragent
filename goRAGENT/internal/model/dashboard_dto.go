@@ -35,3 +35,51 @@ type TimeBucket struct {
 	Start time.Time
 	End   time.Time
 }
+
+// ========== Dashboard 响应 VO ==========
+
+// KpiVO 概览 KPI 值（带同比变化量）。
+type KpiVO struct {
+	Value    float64 `json:"value"`
+	Delta    float64 `json:"delta,omitempty"`
+	DeltaPct float64 `json:"deltaPct,omitempty"`
+}
+
+// OverviewResp 概览响应。
+type OverviewResp struct {
+	Window        string            `json:"window"`
+	CompareWindow string            `json:"compareWindow"`
+	UpdatedAt     int64             `json:"updatedAt"`
+	Kpis          map[string]KpiVO  `json:"kpis"`
+}
+
+// PerformanceResp 性能指标响应。
+type PerformanceResp struct {
+	Window        string  `json:"window"`
+	AvgLatencyMs  float64 `json:"avgLatencyMs"`
+	P95LatencyMs  float64 `json:"p95LatencyMs"`
+	SuccessRate   float64 `json:"successRate"`
+	ErrorRate     float64 `json:"errorRate"`
+	NoDocRate     float64 `json:"noDocRate"`
+	SlowRate      float64 `json:"slowRate"`
+}
+
+// TrendPoint 趋势数据点。
+type TrendPoint struct {
+	Ts    int64 `json:"ts"`
+	Value int64 `json:"value"`
+}
+
+// TrendSeries 趋势序列（含名称和数据点列表）。
+type TrendSeries struct {
+	Name string       `json:"name"`
+	Data []TrendPoint `json:"data"`
+}
+
+// TrendsResp 趋势响应。
+type TrendsResp struct {
+	Metric      string         `json:"metric"`
+	Window      string         `json:"window"`
+	Granularity string         `json:"granularity"`
+	Series      []TrendSeries  `json:"series"`
+}

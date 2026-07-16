@@ -10,25 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
-type chunkVO struct {
-	ID              string `json:"id"`
-	DocID           string `json:"docId"`
-	KbID            string `json:"kbId"`
-	ChunkIndex      int    `json:"chunkIndex"`
-	Text            string `json:"text"`
-	CharCount       int    `json:"charCount"`
-	TokenCount      int    `json:"tokenCount"`
-	EmbeddingStatus string `json:"embeddingStatus"`
-	Enabled         int    `json:"enabled"`
-}
-
-func chunkDOtoVO(d model.ChunkDO) chunkVO {
-	return chunkVO{
-		ID: d.ID, DocID: d.DocID, KbID: d.KbID, ChunkIndex: d.ChunkIndex,
-		Text: d.Text, CharCount: d.CharCount, TokenCount: d.TokenCount,
-		EmbeddingStatus: d.EmbeddingStatus, Enabled: d.Enabled,
-	}
-}
+type chunkVO = model.ChunkVO
+type chunkUpdateReq = model.ChunkUpdateReq
 
 func (h *Handler) listChunksByKB(c *gin.Context) {
 	kbID := c.Param("id")
@@ -50,7 +33,7 @@ func (h *Handler) listChunksByKB(c *gin.Context) {
 
 	vos := make([]chunkVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, chunkDOtoVO(d))
+		vos = append(vos, model.ChunkDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -75,7 +58,7 @@ func (h *Handler) listChunks(c *gin.Context) {
 
 	vos := make([]chunkVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, chunkDOtoVO(d))
+		vos = append(vos, model.ChunkDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -87,11 +70,7 @@ func (h *Handler) getChunk(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "Chunk 不存在"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(chunkDOtoVO(do)))
-}
-
-type chunkUpdateReq struct {
-	Text *string `json:"text"`
+	c.JSON(http.StatusOK, response.Success(model.ChunkDOToVO(do)))
 }
 
 func (h *Handler) updateChunk(c *gin.Context) {

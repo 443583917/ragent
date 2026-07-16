@@ -10,30 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
-type ingestionTaskVO struct {
-	ID              int64  `json:"id"`
-	KbID            string `json:"kbId"`
-	DocID           string `json:"docId"`
-	Status          string `json:"status"`
-	TotalChunks     int    `json:"totalChunks"`
-	CompletedChunks int    `json:"completedChunks"`
-	ErrorMessage    string `json:"errorMessage,omitempty"`
-	CreateTime      string `json:"createTime"`
-}
-
-type ingestionNodeVO struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
-
-func taskDOtoVO(d model.IngestionTaskDO) ingestionTaskVO {
-	return ingestionTaskVO{
-		ID: d.ID, KbID: d.KbID, DocID: d.DocID, Status: d.Status,
-		TotalChunks: d.TotalChunks, CompletedChunks: d.CompletedChunks,
-		ErrorMessage: d.ErrorMessage,
-		CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-	}
-}
+type ingestionTaskVO = model.IngestionTaskVO
+type ingestionNodeVO = model.IngestionNodeVO
 
 func (h *Handler) listIngestionTasks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -52,7 +30,7 @@ func (h *Handler) listIngestionTasks(c *gin.Context) {
 
 	vos := make([]ingestionTaskVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, taskDOtoVO(d))
+		vos = append(vos, model.TaskDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -64,7 +42,7 @@ func (h *Handler) getIngestionTask(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "任务不存在"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(taskDOtoVO(do)))
+	c.JSON(http.StatusOK, response.Success(model.TaskDOToVO(do)))
 }
 
 func (h *Handler) getIngestionTaskNodes(c *gin.Context) {

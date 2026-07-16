@@ -14,24 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type documentVO struct {
-	ID         string `json:"id"`
-	KbID       string `json:"kbId"`
-	FileName   string `json:"fileName"`
-	FileType   string `json:"fileType"`
-	FileSize   int64  `json:"fileSize"`
-	Status     string `json:"status"`
-	ChunkCount int    `json:"chunkCount"`
-	CreateTime string `json:"createTime"`
-}
-
-func docDOtoVO(d model.DocumentDO) documentVO {
-	return documentVO{
-		ID: d.ID, KbID: d.KbID, FileName: d.FileName, FileType: d.FileType,
-		FileSize: d.FileSize, Status: d.Status, ChunkCount: d.ChunkCount,
-		CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-	}
-}
+type documentVO = model.DocumentVO
 
 func (h *Handler) listDocuments(c *gin.Context) {
 	kbID := c.Param("id")
@@ -53,7 +36,7 @@ func (h *Handler) listDocuments(c *gin.Context) {
 
 	vos := make([]documentVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, docDOtoVO(d))
+		vos = append(vos, model.DocumentDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -111,7 +94,7 @@ func (h *Handler) uploadDocument(c *gin.Context) {
 		h.ingestionEngine.Run(task.ID)
 	}
 
-	c.JSON(http.StatusOK, response.Success(docDOtoVO(doc)))
+	c.JSON(http.StatusOK, response.Success(model.DocumentDOToVO(doc)))
 }
 
 func (h *Handler) searchDocuments(c *gin.Context) {
@@ -134,7 +117,7 @@ func (h *Handler) searchDocuments(c *gin.Context) {
 
 	vos := make([]documentVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, docDOtoVO(d))
+		vos = append(vos, model.DocumentDOToVO(d))
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
 }
@@ -146,7 +129,7 @@ func (h *Handler) getDocument(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "文档不存在"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(docDOtoVO(do)))
+	c.JSON(http.StatusOK, response.Success(model.DocumentDOToVO(do)))
 }
 
 func (h *Handler) previewDocument(c *gin.Context) {

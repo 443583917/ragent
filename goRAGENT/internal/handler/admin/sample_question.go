@@ -12,29 +12,8 @@ import (
 )
 
 // sampleQuestionItemVO 匹配前端 SampleQuestion 类型
-type sampleQuestionItemVO struct {
-	ID          string `json:"id"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Question    string `json:"question"`
-	CreateTime  string `json:"createTime,omitempty"`
-	UpdateTime  string `json:"updateTime,omitempty"`
-}
-
-type sampleQuestionPayload struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	Question    *string `json:"question"`
-}
-
-func sqDOtoItem(d model.SampleQuestionDO) sampleQuestionItemVO {
-	return sampleQuestionItemVO{
-		ID: d.ID, Title: d.Title, Description: d.Description,
-		Question: d.Question,
-		CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-		UpdateTime: d.UpdateTime.Format("2006-01-02 15:04:05"),
-	}
-}
+type sampleQuestionItemVO = model.SampleQuestionItemVO
+type sampleQuestionPayload = model.SampleQuestionPayload
 
 func (h *Handler) listSampleQuestions(c *gin.Context) {
 	current, _ := strconv.Atoi(c.DefaultQuery("current", "1"))
@@ -62,7 +41,7 @@ func (h *Handler) listSampleQuestions(c *gin.Context) {
 
 	vos := make([]sampleQuestionItemVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, sqDOtoItem(d))
+		vos = append(vos, model.SQDOToItem(d))
 	}
 	if vos == nil {
 		vos = []sampleQuestionItemVO{}
@@ -78,7 +57,7 @@ func (h *Handler) getSampleQuestionsPublic(c *gin.Context) {
 
 	vos := make([]sampleQuestionItemVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, sqDOtoItem(d))
+		vos = append(vos, model.SQDOToItem(d))
 	}
 	if vos == nil {
 		vos = []sampleQuestionItemVO{}

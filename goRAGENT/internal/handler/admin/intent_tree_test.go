@@ -22,7 +22,7 @@ func TestBuildIntentTreeVOs_NestedAndSorted(t *testing.T) {
 		intentDO("1", "root", "", "根", 0, 1),
 		intentDO("3", "child-a", "root", "子A", 1, 0), // 禁用节点也要展示
 	}
-	vos := buildIntentTreeVOs(dos)
+	vos := model.BuildIntentTreeVOs(dos)
 	if len(vos) != 1 {
 		t.Fatalf("应有 1 个根 VO，实际 %d", len(vos))
 	}
@@ -50,7 +50,7 @@ func TestBuildIntentTreeVOs_MapsAllFields(t *testing.T) {
 		TopK: &topK, McpToolID: "sales_query", Kind: 2, SortOrder: 5, Enabled: 1,
 		KbID: "kb-1", PromptSnippet: "snip", PromptTemplate: "tpl", ParamPromptTemplate: "ptpl",
 	}
-	vo := buildIntentTreeVOs([]model.IntentNodeDO{do})[0]
+	vo := model.BuildIntentTreeVOs([]model.IntentNodeDO{do})[0]
 	if vo.ID != "row-1" || vo.IntentCode != "sales" || vo.Level != 2 || vo.Kind != 2 {
 		t.Errorf("基础字段映射错误: %+v", vo)
 	}
@@ -72,7 +72,7 @@ func TestCreateReqToDO_SerializesExamplesAndDefaults(t *testing.T) {
 		KbID: "kb-1", IntentCode: "group-hr", Name: "人事", Level: 1,
 		Examples: []string{"请假流程？", "转正时间？"},
 	}
-	do := createReqToDO(req, "snowflake-id", "user-1")
+	do := model.IntentCreateReqToDO(req, "snowflake-id", "user-1")
 	if do.ID != "snowflake-id" || do.IntentCode != "group-hr" || do.CreateBy != "user-1" {
 		t.Errorf("基础字段错误: %+v", do)
 	}
@@ -94,7 +94,7 @@ func TestCreateReqToDO_ExplicitValues(t *testing.T) {
 		IntentCode: "s", Name: "n", Kind: &kind, Enabled: &enabled,
 		SortOrder: &sortOrder, TopK: &topK, McpToolID: &mcp,
 	}
-	do := createReqToDO(req, "id", "u")
+	do := model.IntentCreateReqToDO(req, "id", "u")
 	if do.Kind != 2 || do.Enabled != 0 || do.SortOrder != 7 {
 		t.Errorf("显式值应生效: %+v", do)
 	}
@@ -109,7 +109,7 @@ func TestUpdateReqToUpdates_OnlyProvidedFields(t *testing.T) {
 	name := "新名字"
 	enabled := 0
 	req := intentNodeUpdateReq{Name: &name, Enabled: &enabled}
-	updates := updateReqToUpdates(req, "user-2")
+	updates := model.IntentUpdateReqToUpdates(req, "user-2")
 
 	if updates["name"] != "新名字" || updates["enabled"] != 0 {
 		t.Errorf("提供的字段应进入 updates: %+v", updates)
@@ -126,7 +126,7 @@ func TestUpdateReqToUpdates_OnlyProvidedFields(t *testing.T) {
 
 func TestUpdateReqToUpdates_ExamplesSerialized(t *testing.T) {
 	req := intentNodeUpdateReq{Examples: []string{"a", "b"}}
-	updates := updateReqToUpdates(req, "u")
+	updates := model.IntentUpdateReqToUpdates(req, "u")
 	if updates["examples"] != `["a","b"]` {
 		t.Errorf("examples 应序列化: %v", updates["examples"])
 	}

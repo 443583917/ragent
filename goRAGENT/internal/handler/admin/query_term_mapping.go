@@ -15,102 +15,10 @@ import (
 
 const mappingTimeLayout = "2006-01-02 15:04:05"
 
-// mappingVO 关键词映射 VO（和 Java QueryTermMappingVO / 前端 QueryTermMapping 一致）
-type mappingVO struct {
-	ID         string `json:"id"`
-	SourceTerm string `json:"sourceTerm"`
-	TargetTerm string `json:"targetTerm"`
-	MatchType  int    `json:"matchType"`
-	Priority   int    `json:"priority"`
-	Enabled    bool   `json:"enabled"`
-	Remark     string `json:"remark,omitempty"`
-	CreateTime string `json:"createTime,omitempty"`
-	UpdateTime string `json:"updateTime,omitempty"`
-}
-
-type mappingCreateReq struct {
-	SourceTerm string  `json:"sourceTerm" binding:"required"`
-	TargetTerm string  `json:"targetTerm" binding:"required"`
-	MatchType  *int    `json:"matchType"`
-	Priority   *int    `json:"priority"`
-	Enabled    *bool   `json:"enabled"`
-	Remark     *string `json:"remark"`
-}
-
-type mappingUpdateReq struct {
-	SourceTerm *string `json:"sourceTerm"`
-	TargetTerm *string `json:"targetTerm"`
-	MatchType  *int    `json:"matchType"`
-	Priority   *int    `json:"priority"`
-	Enabled    *bool   `json:"enabled"`
-	Remark     *string `json:"remark"`
-}
-
-// ========== 纯转换函数 ==========
-
-func mappingToVO(d model.TermMappingDO) mappingVO {
-	vo := mappingVO{
-		ID: d.ID, SourceTerm: d.SourceTerm, TargetTerm: d.TargetTerm,
-		MatchType: d.MatchType, Priority: d.Priority,
-		Enabled: d.Enabled == 1, Remark: d.Remark,
-	}
-	if !d.CreateTime.IsZero() {
-		vo.CreateTime = d.CreateTime.Format(mappingTimeLayout)
-	}
-	if !d.UpdateTime.IsZero() {
-		vo.UpdateTime = d.UpdateTime.Format(mappingTimeLayout)
-	}
-	return vo
-}
-
-func mappingCreateReqToDO(req mappingCreateReq, id, operator string) model.TermMappingDO {
-	do := model.TermMappingDO{
-		ID: id, SourceTerm: req.SourceTerm, TargetTerm: req.TargetTerm,
-		MatchType: model.MatchTypeExact, Priority: 0, Enabled: 1,
-		CreateBy: operator, UpdateBy: operator,
-	}
-	if req.MatchType != nil {
-		do.MatchType = *req.MatchType
-	}
-	if req.Priority != nil {
-		do.Priority = *req.Priority
-	}
-	if req.Enabled != nil && !*req.Enabled {
-		do.Enabled = 0
-	}
-	if req.Remark != nil {
-		do.Remark = *req.Remark
-	}
-	return do
-}
-
-func mappingUpdateReqToUpdates(req mappingUpdateReq, operator string) map[string]any {
-	updates := map[string]any{"update_by": operator}
-	if req.SourceTerm != nil {
-		updates["source_term"] = *req.SourceTerm
-	}
-	if req.TargetTerm != nil {
-		updates["target_term"] = *req.TargetTerm
-	}
-	if req.MatchType != nil {
-		updates["match_type"] = *req.MatchType
-	}
-	if req.Priority != nil {
-		updates["priority"] = *req.Priority
-	}
-	if req.Enabled != nil {
-		v := 0
-		if *req.Enabled {
-			v = 1
-		}
-		updates["enabled"] = v
-	}
-	if req.Remark != nil {
-		updates["remark"] = *req.Remark
-	}
-	return updates
-}
-
+// mappingVO 关键词映射 VO
+type mappingVO = model.MappingVO
+type mappingCreateReq = model.MappingCreateReq
+type mappingUpdateReq = model.MappingUpdateReq
 
 // ========== Handler 方法 ==========
 
@@ -146,7 +54,7 @@ func (h *Handler) listMappings(c *gin.Context) {
 	}
 	vos := make([]mappingVO, len(rows))
 	for i, r := range rows {
-		vos[i] = mappingToVO(r)
+		vos[i] = model.MappingToVO(r)
 	}
 	c.JSON(http.StatusOK, response.Success(model.NewPageResult(vos, total, model.PageQuery{Page: current, Size: size})))
 }
@@ -159,7 +67,7 @@ func (h *Handler) getMapping(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "映射不存在"))
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(mappingToVO(row)))
+	c.JSON(http.StatusOK, response.Success(model.MappingToVO(row)))
 }
 
 func (h *Handler) createMapping(c *gin.Context) {
@@ -168,7 +76,7 @@ func (h *Handler) createMapping(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "sourceTerm/targetTerm 不能为空"))
 		return
 	}
-	do := mappingCreateReqToDO(req, snowflake.NextID(), middleware.GetUserID(c.Request.Context()))
+	do := model.MappingCreateReqToDO(req, snowflake.NextID(), middleware.GetUserID(c.Request.Context()))
 	if err := h.db.WithContext(c.Request.Context()).Create(&do).Error; err != nil {
 		zap.L().Error("创建映射失败", zap.Error(err))
 		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "创建失败"))
@@ -184,7 +92,7 @@ func (h *Handler) updateMapping(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "参数错误"))
 		return
 	}
-	updates := mappingUpdateReqToUpdates(req, middleware.GetUserID(c.Request.Context()))
+	updates := model.MappingUpdateReqToUpdates(req, middleware.GetUserID(c.Request.Context()))
 	if err := h.db.WithContext(c.Request.Context()).Model(&model.TermMappingDO{}).
 		Where("id = ? AND deleted = 0", c.Param("id")).
 		Updates(updates).Error; err != nil {
