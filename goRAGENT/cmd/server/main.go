@@ -253,10 +253,10 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.GET("/ingestion/tasks/:id/nodes", adminH.GetIngestionTaskNodes)
 
 	// 前台也用的管理接口（不带 /admin 前缀）
-	api.GET("/knowledge-base/docs/:docId/chunks/:chunkId", adminH.GetChunk)
-	api.PUT("/knowledge-base/docs/:docId/chunks/:chunkId", adminH.UpdateChunk)
-	api.PATCH("/knowledge-base/docs/:docId/chunks/:chunkId/enable", adminH.ToggleChunk)
-	api.PATCH("/knowledge-base/docs/:docId/enable", adminH.ToggleDocument)
+	api.GET("/knowledge-base/docs/:id/chunks/:chunkId", adminH.GetChunk)
+	api.PUT("/knowledge-base/docs/:id/chunks/:chunkId", adminH.UpdateChunk)
+	api.PATCH("/knowledge-base/docs/:id/chunks/:chunkId/enable", adminH.ToggleChunk)
+	api.PATCH("/knowledge-base/docs/:id/enable", adminH.ToggleDocument)
 	api.PUT("/mappings/:id", adminH.UpdateMapping)
 	api.DELETE("/mappings/:id", adminH.DeleteMapping)
 	api.PUT("/sample-questions/:id", adminH.UpdateSampleQuestion)

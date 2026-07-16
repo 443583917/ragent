@@ -215,7 +215,7 @@ func (h *Handler) deleteDocument(c *gin.Context) {
 }
 
 func (h *Handler) toggleDocument(c *gin.Context) {
-	id := c.Param("docId")
+	id := c.Param("id")
 
 	var sample rag.ChunkDO
 	currentEnabled := 0
