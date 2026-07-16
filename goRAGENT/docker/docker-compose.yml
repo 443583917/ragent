@@ -1,0 +1,137 @@
+# ============================================================
+# goRAGENT Docker Compose — 全部容器隔离，端口错开 CarAgent
+#
+# MinerU: HTTP API (https://mineru.net)，不在容器内
+# Embedding: BGE-M3 HTTP 服务 (CarAgent 脚本, localhost:19531)
+#
+# 端口隔离 (和 CarAgent 零冲突):
+#   goRAGENT:  3307,6380,19532,9010,9011,8082,8083
+#   CarAgent:  3306,6379,19530,9000,9001,8080,8081
+# ============================================================
+
+networks:
+  ragent-net:
+    name: ragent-net
+    driver: bridge
+
+volumes:
+  ragent-mysql-data:
+  ragent-redis-data:
+  ragent-etcd-data:
+  ragent-minio-data:
+  ragent-milvus-data:
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ragent-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: ragent
+    ports:
+      - "3307:3306"
+    volumes:
+      - ragent-mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ragent-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ragent-redis
+    restart: always
+    ports:
+      - "6380:6379"
+    volumes:
+      - ragent-redis-data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - ragent-net
+
+  etcd:
+    container_name: ragent-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - ragent-etcd-data:/etcd
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ragent-net
+
+  minio:
+    container_name: ragent-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - ragent-minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ragent-net
+
+  milvus:
+    container_name: ragent-milvus
+    image: milvusdb/milvus:v2.4.0
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ragent-milvus-data:/var/lib/milvus
+    ports:
+      - "19532:19530"
+      - "9092:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      - etcd
+      - minio
+    networks:
+      - ragent-net
+
+  attu:
+    container_name: ragent-attu
+    image: zilliz/attu:latest
+    ports:
+      - "8083:3000"
+    environment:
+      MILVUS_URL: ragent-milvus:19530
+    depends_on:
+      - milvus
+    networks:
+      - ragent-net

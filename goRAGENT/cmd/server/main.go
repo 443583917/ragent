@@ -1,0 +1,258 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/nageoffer/ragent/goRAGENT/internal/admin"
+	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"github.com/nageoffer/ragent/goRAGENT/internal/framework/jwt"
+	"github.com/nageoffer/ragent/goRAGENT/internal/framework/logx"
+	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
+	"github.com/nageoffer/ragent/goRAGENT/internal/infra/embedding"
+	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"github.com/nageoffer/ragent/goRAGENT/internal/infra/rerank"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/guidance"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/intent"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/pipeline"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/rewrite"
+	"github.com/nageoffer/ragent/goRAGENT/internal/user"
+)
+
+func loadDotEnv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil { return }
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") { continue }
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 { continue }
+		k, v := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+		if os.Getenv(k) == "" { os.Setenv(k, v) }
+	}
+}
+
+func main() {
+	loadDotEnv(".env")
+	cfg := config.Load()
+
+	logger := logx.Init(strings.ToLower(cfg.Log.Level))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
+
+	if err := snowflake.Init(1); err != nil { log.Fatalf("Snowflake: %v", err) }
+
+	db, _ := initDB(cfg)
+	if db != nil { config.SetDBGorm(db) }
+
+	rdb := initRedis(cfg)
+	if rdb != nil { config.SetRedisClient(rdb) }
+
+	PrintStartupBanner(cfg.App.Name, cfg.LLM.PrimaryProvider())
+	InitDB(db)
+	InitRedis(rdb)
+	InitMilvus(cfg.Milvus.URI())
+	go InitEmbedding(cfg.Embedding.HTTPURL)
+	go InitLLM(cfg.LLM.PrimaryProvider(), "", "", "")
+
+	llmSvc := llm.NewChatService(cfg)
+	prompts := prompt.NewTemplateLoader()
+	memSvc := memory.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
+
+	embedSvc := embedding.NewService(cfg.Embedding.HTTPURL)
+	rerankSvc := rerank.NewService(cfg.Reranker.HTTPURL, cfg.RAG.RerankTopK)
+
+	var searchChannels []retrieve.SearchChannel
+	if mvStore, err := vectorstore.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
+		searchChannels = append(searchChannels,
+			retrieve.NewIntentDirectedChannel(cfg.RAG.Search.Channels.IntentDirected, mvStore),
+			retrieve.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
+		)
+	}
+	postProcessors := []retrieve.PostProcessor{
+		&retrieve.DedupPostProcessor{},
+		&retrieve.FusionPostProcessor{RRFK: 60, RerankCandidateLimit: 50},
+		retrieve.NewRerankPostProcessor(retrieve.RerankerAdapter(rerankSvc), cfg.RAG.RerankEnabled),
+	}
+	multiChannelEngine := retrieve.NewMultiChannelEngine(searchChannels, postProcessors)
+	retrievalEngine := retrieve.NewRetrievalEngine(cfg.RAG, multiChannelEngine, prompts)
+
+	// 意图树: Loader(Redis→MySQL) → Classifier(LLM) → Resolver
+	intentLoader := intent.NewTreeLoader(db, rdb)
+	intentClassifier := intent.NewClassifier(intentLoader, llmSvc, prompts)
+	intentResolver := intent.NewResolver(intentClassifier)
+
+	// 查询改写: 同义词归一化(Redis→MySQL) → LLM 改写+子问题拆分
+	mappingLoader := rewrite.NewMappingLoader(db, rdb)
+	queryRewriter := rewrite.NewRewriter(mappingLoader, llmSvc, prompts, cfg.RAG.QueryRewrite)
+
+	// 歧义引导: 分数比值 + LLM 二次确认 → 选项话术短路
+	guidanceDetector := guidance.NewDetector(cfg.Guidance, llmSvc, prompts)
+
+	ragPipeline := pipeline.NewSimplePipeline(cfg, memSvc, llmSvc, prompts, retrievalEngine, queryRewriter, intentResolver, guidanceDetector)
+	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline)
+
+	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
+	adminH := admin.NewHandler(db).SetIntentCacheClearer(intentLoader).SetMappingCacheClearer(mappingLoader)
+
+	// ====== 路由 ======
+	gin.SetMode(map[bool]string{true: gin.DebugMode, false: gin.ReleaseMode}[cfg.App.Debug])
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	api := r.Group("/api/ragent")
+	api.GET("/health", HealthHandler(cfg))
+
+	// 认证（无需 JWT）
+	authH := user.NewHandler(db, cfg)
+	authH.AuthRoutes(api.Group("/auth"))
+api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+
+	// 示例问题（无需 JWT）
+	api.GET("/rag/sample-questions", func(c *gin.Context) {
+		c.JSON(200, gin.H{"code": "0", "data": []gin.H{}})
+	})
+
+	// RAG 对话（JWT）
+	ragV3 := api.Group("/rag/v3")
+	ragV3.Use(jwt.Middleware(cfg.SaToken.TokenName))
+	ragV3.GET("/chat", chatHandler.StreamChat)
+	ragV3.POST("/stop", chatHandler.StopTask)
+
+	// 会话 + 消息 + 反馈（JWT，路径契约和前端 sessionService/chatService 一致）
+	sessH := rag.NewSessionHandler(db, cfg)
+	sessionGroup := api.Group("", jwt.Middleware(cfg.SaToken.TokenName))
+	sessH.RegisterRoutes(sessionGroup)
+
+	// 用户信息（JWT）
+	api.GET("/user/me", jwt.Middleware(cfg.SaToken.TokenName), user.CurrentUser(db, cfg))
+
+	// 前台管理接口（不带 /admin 前缀, 避免路由冲突, 仅加知识库/意图树/模型/设置/trace）
+	api.GET("/knowledge-base", admin.NewHandler(db).ListKnowledgeBases)
+	api.POST("/knowledge-base", admin.NewHandler(db).CreateKnowledgeBase)
+	api.GET("/knowledge-base/:id", admin.NewHandler(db).GetKnowledgeBase)
+	api.PUT("/knowledge-base/:id", admin.NewHandler(db).UpdateKnowledgeBase)
+	api.DELETE("/knowledge-base/:id", admin.NewHandler(db).DeleteKnowledgeBase)
+	api.GET("/knowledge-base/docs/search", admin.NewHandler(db).SearchDocuments)
+	api.GET("/intent-tree", adminH.GetIntentTree)
+	api.POST("/intent-tree", adminH.CreateIntentNode)
+	api.GET("/intent-tree/trees", adminH.GetIntentTrees)
+	api.POST("/intent-tree/batch/enable", adminH.BatchEnableIntent)
+	api.POST("/intent-tree/batch/disable", adminH.BatchDisableIntent)
+	api.POST("/intent-tree/batch/delete", adminH.BatchDeleteIntent)
+	api.GET("/models", admin.NewHandler(db).ListModels)
+	api.GET("/settings", admin.NewHandler(db).GetSettings)
+	api.PUT("/settings", admin.NewHandler(db).UpdateSettings)
+	api.GET("/traces/runs", admin.NewHandler(db).ListTraceRuns)
+	api.GET("/traces/runs/:runId", admin.NewHandler(db).GetTraceDetail)
+
+	// 管理后台（JWT）
+	// 系统设置
+	api.GET("/rag/settings", SettingsHandler(cfg))
+	api.PUT("/rag/settings", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	// Trace
+	api.GET("/rag/traces/runs", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.GET("/rag/traces/runs/:traceId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	api.GET("/rag/traces/runs/:traceId/nodes", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":[]gin.H{}}) })
+	// 示例问题 CRUD
+	api.GET("/sample-questions", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.POST("/sample-questions", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
+	// 关键词映射
+	api.GET("/mappings", adminH.ListMappings)
+	api.GET("/mappings/:id", adminH.GetMapping)
+	api.POST("/mappings", adminH.CreateMapping)
+	// 审计日志
+	api.GET("/biz-change-logs", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.GET("/biz-change-logs/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	// 用户管理
+	api.GET("/users", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.POST("/users", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	// 入库
+	api.GET("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.GET("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	api.POST("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
+	api.PUT("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.GET("/ingestion/tasks", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
+	api.GET("/ingestion/tasks/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	api.POST("/ingestion/tasks", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
+	api.POST("/ingestion/tasks/upload", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"taskId":"1"}}) })
+	api.GET("/ingestion/tasks/:id/nodes", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":[]gin.H{}}) })
+
+	// 前台也用的管理接口（不带 /admin 前缀）
+	api.GET("/knowledge-base/docs/:docId/chunks/:chunkId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
+	api.PUT("/knowledge-base/docs/:docId/chunks/:chunkId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PATCH("/knowledge-base/docs/:docId/chunks/:chunkId/enable", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PATCH("/knowledge-base/docs/:docId/enable", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PUT("/mappings/:id", adminH.UpdateMapping)
+	api.DELETE("/mappings/:id", adminH.DeleteMapping)
+	api.PUT("/sample-questions/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.DELETE("/sample-questions/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PUT("/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.DELETE("/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.PUT("/intent-tree/:id", adminH.UpdateIntentNode)
+	api.DELETE("/intent-tree/:id", adminH.DeleteIntentNode)
+	api.POST("/knowledge-base/docs/:docId/chunk", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
+
+
+	adminH.RegisterRoutes(api.Group("/admin"))
+
+	// ====== 启动 ======
+	addr := fmt.Sprintf("%s:%d", cfg.App.Host, cfg.App.Port)
+	srv := &http.Server{Addr: addr, Handler: r}
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+		zap.L().Info("关闭服务...")
+		srv.Shutdown(context.Background())
+	}()
+
+	zap.L().Info("服务启动", zap.String("addr", addr))
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("启动失败: %v", err)
+	}
+}
+
+func initDB(cfg *config.Config) (*gorm.DB, error) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.Database)
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
+	})
+	if err != nil { return nil, err }
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(cfg.MySQL.PoolSize)
+	sqlDB.SetMaxIdleConns(cfg.MySQL.PoolSize / 2)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+	return db, nil
+}
+
+func initRedis(cfg *config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password, DB: cfg.Redis.DB,
+	})
+}
+
+func init() {
+	// register additional routes in serve
+}
