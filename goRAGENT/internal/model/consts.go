@@ -43,3 +43,15 @@ const (
 	Disabled = 0
 	Enabled  = 1
 )
+
+// Dashboard 趋势统计指标（对照 dashboard.go trends 端点 metric 取值；
+// TraceRuns/TraceNoDoc 为 quality 指标的两条子序列）
+const (
+	TrendMetricSessions    = "sessions"
+	TrendMetricMessages    = "messages"
+	TrendMetricActiveUsers = "activeUsers"
+	TrendMetricAvgLatency  = "avgLatency"
+	TrendMetricQuality     = "quality"
+	TrendMetricTraceRuns   = "traceRuns"
+	TrendMetricTraceNoDoc  = "traceNoDoc"
+)

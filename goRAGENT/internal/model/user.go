@@ -7,6 +7,7 @@ type UserDO struct {
 	Password string `gorm:"column:password"`
 	Role     string `gorm:"column:role"`
 	Avatar   string `gorm:"column:avatar"`
+	Deleted  int    `gorm:"column:deleted"`
 }
 
 func (UserDO) TableName() string { return "t_user" }

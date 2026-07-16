@@ -15,3 +15,8 @@ type BizChangeLogDO struct {
 }
 
 func (BizChangeLogDO) TableName() string { return "t_biz_change_log" }
+
+// AuditLogFilter 审计日志列表过滤条件（字段对照 listBizChangeLogs 的查询条件）。
+type AuditLogFilter struct {
+	EntityType string // 非空时精确匹配 entity_type
+}

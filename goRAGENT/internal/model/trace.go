@@ -32,3 +32,9 @@ type TraceNodeDO struct {
 }
 
 func (TraceNodeDO) TableName() string { return "t_rag_trace_node" }
+
+// TraceRunFilter Trace 运行记录列表过滤条件（字段对照 listTraceRunsReal 的查询条件）。
+type TraceRunFilter struct {
+	TraceID        string // 非空时精确匹配 run_id
+	ConversationID string // 非空时精确匹配 conversation_id
+}
