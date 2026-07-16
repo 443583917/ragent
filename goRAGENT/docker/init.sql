@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS t_query_term_mapping (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS t_knowledge_base (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id              VARCHAR(32) PRIMARY KEY,
     name            VARCHAR(128) NOT NULL,
     description     TEXT,
     embedding_model VARCHAR(64),
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS t_knowledge_base (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS t_document (
-    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id          VARCHAR(32)  PRIMARY KEY,
     kb_id       VARCHAR(32)  NOT NULL,
     file_name   VARCHAR(256) NOT NULL,
     file_type   VARCHAR(32),
@@ -139,4 +139,31 @@ CREATE TABLE IF NOT EXISTS t_rag_trace_node (
     duration_ms    BIGINT,
     error_message  TEXT,
     create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_chunk (
+    id              VARCHAR(32)  PRIMARY KEY,
+    doc_id          VARCHAR(32)  NOT NULL,
+    kb_id           VARCHAR(32)  NOT NULL,
+    chunk_index     INT          NOT NULL,
+    text            MEDIUMTEXT   NOT NULL,
+    char_count      INT          DEFAULT 0,
+    token_count     INT          DEFAULT 0,
+    embedding_status VARCHAR(16) DEFAULT 'PENDING',
+    enabled         TINYINT      NOT NULL DEFAULT 1,
+    deleted         TINYINT      NOT NULL DEFAULT 0,
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_ingestion_task (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    kb_id           VARCHAR(32)  NOT NULL,
+    doc_id          VARCHAR(32)  NOT NULL,
+    status          VARCHAR(16)  DEFAULT 'PENDING',
+    total_chunks    INT          DEFAULT 0,
+    completed_chunks INT         DEFAULT 0,
+    error_message   TEXT,
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
