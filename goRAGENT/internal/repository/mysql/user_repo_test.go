@@ -119,7 +119,10 @@ func TestUserRepo_List_KeywordFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List 失败: %v", err)
 	}
-	if len(rows) == 3 && rows[0].Username != "bob" {
+	if len(rows) != 3 {
+		t.Fatalf("List 应返回 3 条, 实际 %d", len(rows))
+	}
+	if rows[0].Username != "bob" {
 		t.Fatalf("List 应按 id DESC, 首条应为 bob, 实际 %s", rows[0].Username)
 	}
 }

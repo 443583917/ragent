@@ -31,6 +31,8 @@ func (r *conversationRepo) ListByUser(ctx context.Context, userID string, limit 
 }
 
 // Exists 会话是否存在（对照 createOrUpdateConversation 的 Count 判断，不过滤 deleted）。
+// 注意：原实现 memory_service.go:98 的 WHERE 还带 user_id 条件，本接口签名未表达
+// user 归属（conversation_id 为 snowflake 全局唯一，功能等价；user 归属校验由后续任务处理）。
 func (r *conversationRepo) Exists(ctx context.Context, id string) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).

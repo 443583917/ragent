@@ -101,17 +101,13 @@ func (r *dashboardRepo) Performance(ctx context.Context, _ time.Time) (*model.Da
 }
 
 // TrendCounts 按时间桶统计指标数量（对照 dashboardTrendsReal 的逐桶 Count 现状；
-// 未知指标与 avgLatency/quality 返回全 0，与原实现一致）。
+// avgLatency/quality 返回全 0；未识别指标与原实现 else 分支一致，按 t_conversation 计数）。
 func (r *dashboardRepo) TrendCounts(ctx context.Context, metric string, buckets []model.TimeBucket) ([]int64, error) {
 	counts := make([]int64, len(buckets))
 	for i, b := range buckets {
 		var count int64
 		var err error
 		switch metric {
-		case model.TrendMetricSessions:
-			err = r.db.WithContext(ctx).Model(&model.ConversationDO{}).Scopes(notDeleted).
-				Where("create_time >= ? AND create_time < ?", b.Start, b.End).
-				Count(&count).Error
 		case model.TrendMetricMessages:
 			err = r.db.WithContext(ctx).Model(&model.ConversationMessageDO{}).Scopes(notDeleted).
 				Where("create_time >= ? AND create_time < ?", b.Start, b.End).
@@ -128,8 +124,12 @@ func (r *dashboardRepo) TrendCounts(ctx context.Context, metric string, buckets 
 			err = r.db.WithContext(ctx).Model(&model.TraceRunDO{}).
 				Where("status = 'EMPTY' AND error_message = '' AND create_time >= ? AND create_time < ?", b.Start, b.End).
 				Count(&count).Error
-		default:
+		case model.TrendMetricAvgLatency, model.TrendMetricQuality:
 			count = 0
+		default: // sessions 及未识别指标：对照原 else 分支按 t_conversation 计数
+			err = r.db.WithContext(ctx).Model(&model.ConversationDO{}).Scopes(notDeleted).
+				Where("create_time >= ? AND create_time < ?", b.Start, b.End).
+				Count(&count).Error
 		}
 		if err != nil {
 			return nil, fmt.Errorf("trend count metric=%s bucket=%d: %w", metric, i, err)
