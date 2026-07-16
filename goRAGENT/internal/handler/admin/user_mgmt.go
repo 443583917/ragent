@@ -84,7 +84,7 @@ func (h *Handler) createUser(c *gin.Context) {
 		role = "user"
 	}
 	// MD5 hashing (same as user.go pattern)
-	pwdHash := md5User(req.Password)
+	pwdHash := md5Hash(req.Password)
 
 	if err := h.db.WithContext(c.Request.Context()).Exec(
 		"INSERT INTO t_user (username, password, role) VALUES (?, ?, ?)", req.Username, pwdHash, role,
@@ -142,7 +142,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "密码至少4位"))
 		return
 	}
-	pwdHash := md5User(req.Password)
+	pwdHash := md5Hash(req.Password)
 	if err := h.db.WithContext(c.Request.Context()).Table("t_user").
 		Where("id = ? AND deleted = 0", c.Param("id")).Update("password", pwdHash).Error; err != nil {
 		zap.L().Error("修改密码失败", zap.Error(err))
@@ -152,4 +152,4 @@ func (h *Handler) changePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, response.SuccessOK())
 }
 
-func md5User(s string) string { return fmt.Sprintf("%x", md5.Sum([]byte(s))) }
+func md5Hash(s string) string { return fmt.Sprintf("%x", md5.Sum([]byte(s))) }

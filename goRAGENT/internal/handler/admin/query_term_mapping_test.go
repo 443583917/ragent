@@ -78,15 +78,3 @@ func TestMappingUpdateReqToUpdates_OnlyProvided(t *testing.T) {
 	}
 }
 
-func TestBuildPageResult_Math(t *testing.T) {
-	pr := buildPageResult([]mappingVO{{ID: "a"}, {ID: "b"}}, 25, 3, 10)
-	if pr.Total != 25 || pr.Current != 3 || pr.Size != 10 {
-		t.Errorf("分页字段错误: %+v", pr)
-	}
-	if pr.Pages != 3 { // ceil(25/10)
-		t.Errorf("pages 应为 3: %d", pr.Pages)
-	}
-	if len(pr.Records) != 2 {
-		t.Errorf("records 错误: %d", len(pr.Records))
-	}
-}

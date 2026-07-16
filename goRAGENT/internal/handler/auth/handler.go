@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/md5"
 	"fmt"
 	"net/http"
 
@@ -19,6 +20,9 @@ type Handler struct {
 }
 
 func NewHandler(db *gorm.DB, cfg *config.Config) *Handler { return &Handler{db: db, cfg: cfg} }
+
+// md5Hash 临机内联（原 model.MD5Hash），后续任务收敛到 PasswordHasher
+func md5Hash(s string) string { return fmt.Sprintf("%x", md5.Sum([]byte(s))) }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/login", h.Login)
@@ -46,7 +50,7 @@ func (h *Handler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "账号不存在"))
 		return
 	}
-	if user.Password != model.MD5Hash(req.Password) {
+	if user.Password != md5Hash(req.Password) {
 		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "密码错误"))
 		return
 	}
@@ -78,7 +82,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user := model.UserDO{Username: req.Username, Password: model.MD5Hash(req.Password), Role: "user"}
+	user := model.UserDO{Username: req.Username, Password: md5Hash(req.Password), Role: "user"}
 	if err := h.db.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, response.Failure(response.CodeServerError, "注册失败"))
 		return

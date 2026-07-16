@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"math"
 	"net/http"
 	"strconv"
 
@@ -20,15 +19,6 @@ type sampleQuestionItemVO struct {
 	Question    string `json:"question"`
 	CreateTime  string `json:"createTime,omitempty"`
 	UpdateTime  string `json:"updateTime,omitempty"`
-}
-
-// pageResultVO 匹配前端 PageResult<T> 类型
-type pageResultVO struct {
-	Records []sampleQuestionItemVO `json:"records"`
-	Total   int64                  `json:"total"`
-	Size    int                    `json:"size"`
-	Current int                    `json:"current"`
-	Pages   int                    `json:"pages"`
 }
 
 type sampleQuestionPayload struct {
@@ -77,11 +67,7 @@ func (h *Handler) listSampleQuestions(c *gin.Context) {
 	if vos == nil {
 		vos = []sampleQuestionItemVO{}
 	}
-	pages := int(math.Ceil(float64(total) / float64(size)))
-
-	c.JSON(http.StatusOK, response.Success(pageResultVO{
-		Records: vos, Total: total, Size: size, Current: current, Pages: pages,
-	}))
+	c.JSON(http.StatusOK, response.Success(model.NewPageResult(vos, total, model.PageQuery{Page: current, Size: size})))
 }
 
 func (h *Handler) getSampleQuestionsPublic(c *gin.Context) {

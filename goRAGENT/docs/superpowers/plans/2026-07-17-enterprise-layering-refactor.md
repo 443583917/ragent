@@ -683,7 +683,7 @@ type Handler struct{ svc svcadmin.Services } // 注意包名冲突：import svca
 - Create: `internal/model/page.go`（上文全文）
 - Create: `internal/model/page_test.go`
 - Create: `internal/model/consts.go`
-- Modify: `internal/model/user.go`（删除 `MD5Hash`，函数体迁往 Task 3 的 auth service；本任务先在 `internal/model/user.go` 原地保留一个 deprecated 包装以免编译断裂 —— 不，直接删除并临时让引用方 `internal/handler/auth/handler.go`、`internal/handler/admin/user_mgmt.go` 内联私有函数 `md5Hash`，Task 3/6 再收敛到 PasswordHasher）
+- Modify: `internal/model/user.go`（直接删除 `MD5Hash`，引用方 `internal/handler/auth/handler.go`、`internal/handler/admin/user_mgmt.go` 各自临时内联私有函数 `md5Hash`（函数体照抄原 `model.MD5Hash`），Task 3/4 再收敛到 PasswordHasher）
 - Modify: `internal/service/rag/term_mapping.go`（删除重复定义的 `TermMappingDO`，改用 `model.TermMappingDO`；先读 `internal/model/mapping.go` 比对字段确认一致）
 - Modify: `internal/handler/admin/query_term_mapping.go`（`buildPageResult` 替换为 `model.NewPageResult`，删除旧实现；同风格的 trace.go / sample_question.go 一并替换）
 

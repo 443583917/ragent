@@ -28,15 +28,6 @@ type mappingVO struct {
 	UpdateTime string `json:"updateTime,omitempty"`
 }
 
-// pageResult MyBatis-Plus IPage 风格分页（和前端 PageResult 一致）
-type pageResult struct {
-	Records []mappingVO `json:"records"`
-	Total   int64       `json:"total"`
-	Size    int         `json:"size"`
-	Current int         `json:"current"`
-	Pages   int64       `json:"pages"`
-}
-
 type mappingCreateReq struct {
 	SourceTerm string  `json:"sourceTerm" binding:"required"`
 	TargetTerm string  `json:"targetTerm" binding:"required"`
@@ -120,13 +111,6 @@ func mappingUpdateReqToUpdates(req mappingUpdateReq, operator string) map[string
 	return updates
 }
 
-func buildPageResult(records []mappingVO, total int64, current, size int) pageResult {
-	if records == nil {
-		records = []mappingVO{}
-	}
-	pages := (total + int64(size) - 1) / int64(size)
-	return pageResult{Records: records, Total: total, Size: size, Current: current, Pages: pages}
-}
 
 // ========== Handler 方法 ==========
 
@@ -164,7 +148,7 @@ func (h *Handler) listMappings(c *gin.Context) {
 	for i, r := range rows {
 		vos[i] = mappingToVO(r)
 	}
-	c.JSON(http.StatusOK, response.Success(buildPageResult(vos, total, current, size)))
+	c.JSON(http.StatusOK, response.Success(model.NewPageResult(vos, total, model.PageQuery{Page: current, Size: size})))
 }
 
 func (h *Handler) getMapping(c *gin.Context) {

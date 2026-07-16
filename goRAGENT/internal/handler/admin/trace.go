@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"math"
 	"net/http"
 	"strconv"
 
@@ -104,11 +103,8 @@ func (h *Handler) listTraceRunsReal(c *gin.Context) {
 	if vos == nil {
 		vos = []ragTraceRunVO{}
 	}
-	pages := int(math.Ceil(float64(total) / float64(size)))
 
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"records": vos, "total": total, "size": size, "current": current, "pages": pages,
-	}))
+	c.JSON(http.StatusOK, response.Success(model.NewPageResult(vos, total, model.PageQuery{Page: current, Size: size})))
 }
 
 func (h *Handler) getTraceDetailReal(c *gin.Context) {
