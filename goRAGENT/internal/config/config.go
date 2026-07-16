@@ -43,6 +43,7 @@ type Config struct {
 	SaToken   SaTokenConfig
 	Memory    MemoryConfig
 	Guidance  GuidanceConfig
+	Ingestion IngestionConfig
 }
 
 // MemoryConfig 对话记忆配置（和 Java MemoryProperties 对应）
@@ -164,6 +165,13 @@ type LogConfig struct {
 }
 type MineruConfig struct {
 	APIToken string
+	DataDir  string // 文件管理根目录，默认 "data"
+}
+
+type IngestionConfig struct {
+	ChunkSize      int // 分块大小（字符），默认 1024
+	ChunkOverlap   int // 重叠大小（字符），默认 50
+	EmbedBatchSize int // 嵌入批大小，默认 32
 }
 
 // ========== Provider 模型解析 ==========
@@ -325,6 +333,12 @@ func Load() *Config {
 		},
 		Mineru: MineruConfig{
 			APIToken: envStr("MINERU_API_TOKEN", ""),
+			DataDir:  envStr("MINERU_DATA_DIR", "data"),
+		},
+		Ingestion: IngestionConfig{
+			ChunkSize:      envInt("INGESTION_CHUNK_SIZE", 1024),
+			ChunkOverlap:   envInt("INGESTION_CHUNK_OVERLAP", 50),
+			EmbedBatchSize: envInt("INGESTION_EMBED_BATCH_SIZE", 32),
 		},
 	}
 	global = cfg
