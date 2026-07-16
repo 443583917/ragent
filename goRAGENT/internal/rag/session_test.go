@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
+	"goRAGENT/internal/rag/memory"
 )
 
 func TestConvToVO_Format(t *testing.T) {

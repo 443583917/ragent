@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"goRAGENT/internal/config"
 )
 
 // ========== 启动自检（和 CarAgent lifespan 对应, 全部非阻塞）==========

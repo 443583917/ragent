@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"goRAGENT/internal/config"
 
 	"go.uber.org/zap"
 )

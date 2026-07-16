@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/prompt"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"

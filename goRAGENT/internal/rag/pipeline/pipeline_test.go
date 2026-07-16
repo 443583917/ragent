@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/rewrite"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/memory"
+	"goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/rag/rewrite"
 )
 
 // ========== fakes ==========

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/infra/llm"
 	"go.uber.org/zap"
 )
 

@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/rag/retrieve"
 	"go.uber.org/zap"
 )
 

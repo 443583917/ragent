@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/llm"
 )
 
 type fakeChat struct {

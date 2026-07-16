@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"goRAGENT/internal/config"
 	"go.uber.org/zap"
 )
 

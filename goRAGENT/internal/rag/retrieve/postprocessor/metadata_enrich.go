@@ -3,8 +3,8 @@ package postprocessor
 import (
 	"context"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/rag"
+	"goRAGENT/internal/rag/retrieve"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

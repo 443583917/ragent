@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	jwtv5 "github.com/golang-jwt/jwt/v5"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/framework/userctx"
 )
 
 type Claims struct {

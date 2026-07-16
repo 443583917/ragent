@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/ingestion"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/ingestion"
+	"goRAGENT/internal/rag/retrieve/vectorstore"
 	"gorm.io/gorm"
 )
 

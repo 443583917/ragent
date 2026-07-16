@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/framework/snowflake"
+	"goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/memory"
+	"goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/rag/retrieve"
 )
 
 // fakeLLMServer 模拟 OpenAI 兼容的流式 /chat/completions 端点，

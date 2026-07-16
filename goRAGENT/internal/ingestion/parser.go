@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/mineru"
+	"goRAGENT/internal/infra/mineru"
 	"go.uber.org/zap"
 )
 

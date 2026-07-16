@@ -3,8 +3,8 @@ package retrieve
 import (
 	"context"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/rag/prompt"
 )
 
 type RetrievalEngine struct {

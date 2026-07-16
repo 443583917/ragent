@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/embedding"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
+	"goRAGENT/internal/framework/snowflake"
+	"goRAGENT/internal/infra/embedding"
+	"goRAGENT/internal/rag"
+	"goRAGENT/internal/rag/retrieve/vectorstore"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

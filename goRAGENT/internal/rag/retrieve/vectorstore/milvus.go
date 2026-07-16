@@ -7,7 +7,7 @@ import (
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/rag/retrieve"
 	"go.uber.org/zap"
 )
 

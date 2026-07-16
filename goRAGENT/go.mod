@@ -1,4 +1,4 @@
-module github.com/nageoffer/ragent/goRAGENT
+module goRAGENT
 
 go 1.23.0
 

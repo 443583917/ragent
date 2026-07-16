@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/retrieve"
 )
 
 func subIntent(sub string, scores ...retrieve.NodeScore) retrieve.SubQuestionIntent {

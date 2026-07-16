@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"goRAGENT/internal/config"
 )
 
 // ModelTarget 模型目标

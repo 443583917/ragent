@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/rag/memory"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

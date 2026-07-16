@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/rag"
 	"go.uber.org/zap"
 )
 

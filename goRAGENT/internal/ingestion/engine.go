@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/embedding"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/mineru"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/embedding"
+	"goRAGENT/internal/infra/mineru"
+	"goRAGENT/internal/rag"
+	"goRAGENT/internal/rag/retrieve/vectorstore"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

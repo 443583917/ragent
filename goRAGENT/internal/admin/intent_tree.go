@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/intent"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/framework/snowflake"
+	"goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/rag/intent"
 	"go.uber.org/zap"
 )
 

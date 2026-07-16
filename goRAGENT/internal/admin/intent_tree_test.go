@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/intent"
+	"goRAGENT/internal/rag/intent"
 )
 
 func intentDO(id, code, parent, name string, sortOrder, enabled int) intent.IntentNodeDO {

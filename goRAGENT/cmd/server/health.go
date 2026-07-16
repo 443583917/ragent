@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
+	"goRAGENT/internal/config"
 	"go.uber.org/zap"
 )
 

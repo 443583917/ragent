@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/rewrite"
+	"goRAGENT/internal/rag/rewrite"
 )
 
 func TestMappingToVO_EnabledIntToBool(t *testing.T) {

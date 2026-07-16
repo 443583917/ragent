@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/infra/llm"
 )
 
 // ========== buildIntentList 序列化 ==========

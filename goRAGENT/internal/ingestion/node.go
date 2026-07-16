@@ -3,7 +3,7 @@ package ingestion
 import (
 	"context"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
+	"goRAGENT/internal/rag"
 )
 
 // Node 入库流水线节点接口

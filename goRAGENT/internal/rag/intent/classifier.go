@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/prompt"
 	"go.uber.org/zap"
 )
 

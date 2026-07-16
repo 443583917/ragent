@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
-	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/infra/llm"
+	"goRAGENT/internal/rag/retrieve"
 )
 
 func kbNS(id, name, fullPath string, score float64) retrieve.NodeScore {

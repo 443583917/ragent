@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/jwt"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/framework/jwt"
+	"goRAGENT/internal/framework/response"
+	"goRAGENT/internal/framework/userctx"
 	"gorm.io/gorm"
 )
 

@@ -4,10 +4,10 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/sse"
-	"github.com/nageoffer/ragent/goRAGENT/internal/framework/userctx"
+	"goRAGENT/internal/config"
+	"goRAGENT/internal/framework/snowflake"
+	"goRAGENT/internal/framework/sse"
+	"goRAGENT/internal/framework/userctx"
 	"go.uber.org/zap"
 )
 
