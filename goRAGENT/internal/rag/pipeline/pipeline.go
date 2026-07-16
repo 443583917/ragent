@@ -7,6 +7,7 @@ import (
 
 	"github.com/nageoffer/ragent/goRAGENT/internal/config"
 	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/mcp"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
@@ -19,6 +20,7 @@ type Ctx struct {
 	DeepThinking bool
 	History      []llm.Message
 	RetrievalCtx *retrieve.RetrievalContext
+	McpResults   []mcp.McpResult
 }
 
 type StreamCallback = llm.StreamCallback
@@ -48,14 +50,16 @@ type MemoryService interface {
 
 // SimplePipeline 精简版 Pipeline（env 配置驱动）
 type SimplePipeline struct {
-	cfg      *config.Config
-	memory   MemoryService
-	llm      *llm.ChatService
-	prompts  *prompt.TemplateLoader
-	retrieve *retrieve.RetrievalEngine
-	rewriter QueryRewriter
-	resolver IntentResolver
-	guidance GuidanceDetector
+	cfg          *config.Config
+	memory       MemoryService
+	llm          *llm.ChatService
+	prompts      *prompt.TemplateLoader
+	retrieve     *retrieve.RetrievalEngine
+	rewriter     QueryRewriter
+	resolver     IntentResolver
+	guidance     GuidanceDetector
+	mcpExecutor  *mcp.Executor
+	mcpFormatter *mcp.Formatter
 }
 
 func NewSimplePipeline(cfg *config.Config, mem MemoryService, llmSvc *llm.ChatService,
@@ -63,6 +67,12 @@ func NewSimplePipeline(cfg *config.Config, mem MemoryService, llmSvc *llm.ChatSe
 	rewriter QueryRewriter, resolver IntentResolver, gd GuidanceDetector) *SimplePipeline {
 	return &SimplePipeline{cfg: cfg, memory: mem, llm: llmSvc, prompts: prompts,
 		retrieve: re, rewriter: rewriter, resolver: resolver, guidance: gd}
+}
+
+// SetMcpExecutor 注入 MCP 执行器 + 格式化器（nil 表示未启用 MCP）
+func (p *SimplePipeline) SetMcpExecutor(exec *mcp.Executor, formatter *mcp.Formatter) {
+	p.mcpExecutor = exec
+	p.mcpFormatter = formatter
 }
 
 // emptyRetrievalNotice 空检索短路提示文案（和 Java handleEmptyRetrieval 一致）
@@ -107,6 +117,33 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 		return p.streamSystemResponse(ctx, pipeCtx, subIntents, wrapped), nil
 	}
 
+	// 5.5 MCP 工具执行 + 场景分流
+	if p.mcpExecutor != nil && mcp.HasMCPIntent(subIntents) {
+		mcpResults := p.mcpExecutor.Execute(ctx, subIntents, pipeCtx.Question)
+
+		if !mcp.HasKBIntent(subIntents) {
+			// MCP_ONLY: 全部 MCP 意图，无 KB → 跳过检索直答
+			zap.L().Info("MCP_ONLY 场景", zap.Int("results", len(mcpResults)))
+			toolData := p.mcpFormatter.Format(mcpResults)
+			if toolData != "" {
+				sysPrompt := singleIntentTemplate(subIntents, "answer-chat-mcp.st", p.prompts)
+				messages := []llm.Message{{Role: "system", Content: sysPrompt}}
+				messages = append(messages, pipeCtx.History...)
+				messages = append(messages, llm.Message{Role: "user", Content: toolData + "\n\n<question>" + pipeCtx.Question + "</question>"})
+				temp := 0.0
+				topp := 1.0
+				return p.llm.StreamChat(ctx, llm.ChatRequest{Messages: messages, Temperature: &temp, TopP: &topp}, wrapped), nil
+			}
+			// MCP 全部失败 → 回退 EMPTY
+			wrapped.OnContent(emptyRetrievalNotice)
+			wrapped.OnComplete()
+			return func() {}, nil
+		}
+
+		// MIXED: 存结果，后续和 KB 检索合并
+		pipeCtx.McpResults = mcpResults
+	}
+
 	// 6. 向量检索（意图定向 + 全局，embedding → Milvus → rerank）
 	sc := &retrieve.SearchContext{
 		OriginalQuestion:  pipeCtx.Question,
@@ -131,30 +168,41 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 		return func() {}, nil
 	}
 
-	// 6. 选模板：单意图且节点自带模板 → 覆盖；否则场景默认模板
-	sysPrompt := singleIntentTemplate(subIntents)
-	if sysPrompt == "" {
-		sysPrompt, _ = p.prompts.Load("answer-chat-kb.st")
+	// 6. 组装消息（MIXED 或 KB_ONLY）
+	temp := 0.0
+	topp := 1.0
+	if len(pipeCtx.McpResults) > 0 && p.mcpFormatter != nil {
+		// MIXED 场景：MCP + KB 合并
+		toolData, docs := p.mcpFormatter.FormatMixed(pipeCtx.McpResults, kbText)
+		sysPrompt := singleIntentTemplate(subIntents, "answer-chat-mcp-kb-mixed.st", p.prompts)
+		messages := []llm.Message{{Role: "system", Content: sysPrompt}}
+		messages = append(messages, pipeCtx.History...)
+		userContent := toolData
+		if docs != "" {
+			userContent += "\n\n" + docs
+		}
+		userContent += "\n\n<question>" + pipeCtx.Question + "</question>"
+		messages = append(messages, llm.Message{Role: "user", Content: userContent})
+		zap.L().Info("MIXED 流式回答", zap.Int("mcp_results", len(pipeCtx.McpResults)), zap.Int("kb_chunks", len(chunks)))
+		return p.llm.StreamChat(ctx, llm.ChatRequest{Messages: messages, Temperature: &temp, TopP: &topp}, wrapped), nil
 	}
 
-	// 7. 组装消息
+	// KB_ONLY 场景：仅文档检索
+	sysPrompt := singleIntentTemplate(subIntents, "answer-chat-kb.st", p.prompts)
 	messages := []llm.Message{{Role: "system", Content: sysPrompt}}
 	messages = append(messages, pipeCtx.History...)
 	evidence := "<documents>\n" + kbText + "\n</documents>"
 	messages = append(messages, llm.Message{Role: "user", Content: evidence + "\n\n" + pipeCtx.Question})
 
-	// 8. 流式回答（完成后 assistant 消息落库）
-	temp := 0.0
-	topp := 1.0
-	req := llm.ChatRequest{Messages: messages, Temperature: &temp, TopP: &topp}
-	zap.L().Info("流式回答", zap.String("question", rr.Rewritten),
+	zap.L().Info("KB_ONLY 流式回答", zap.String("question", rr.Rewritten),
 		zap.Int("chunks", len(chunks)), zap.Int("subQuestions", len(rr.SubQuestions)))
-	return p.llm.StreamChat(ctx, req, wrapped), nil
+	return p.llm.StreamChat(ctx, llm.ChatRequest{Messages: messages, Temperature: &temp, TopP: &topp}, wrapped), nil
 }
 
 // singleIntentTemplate 全局仅命中单个意图且节点自带 promptTemplate 时返回该模板
 // （和 Java RAGPromptService.planPrompt 一致）
-func singleIntentTemplate(subs []retrieve.SubQuestionIntent) string {
+// fallback 为默认模板文件名；当无节点模板时 load 该文件返回
+func singleIntentTemplate(subs []retrieve.SubQuestionIntent, fallback string, tmpl *prompt.TemplateLoader) string {
 	var only *retrieve.NodeRef
 	count := 0
 	for _, s := range subs {
@@ -163,10 +211,11 @@ func singleIntentTemplate(subs []retrieve.SubQuestionIntent) string {
 			only = ns.Node
 		}
 	}
-	if count == 1 && only != nil {
+	if count == 1 && only != nil && strings.TrimSpace(only.PromptTemplate) != "" {
 		return strings.TrimSpace(only.PromptTemplate)
 	}
-	return ""
+	sysPrompt, _ := tmpl.Load(fallback)
+	return sysPrompt
 }
 
 // isSystemOnly 所有子问题都恰好命中 1 个 SYSTEM 意图（和 Java IntentResolver.isSystemOnly 一致）

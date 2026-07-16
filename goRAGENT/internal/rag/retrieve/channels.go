@@ -2,10 +2,14 @@ package retrieve
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/nageoffer/ragent/goRAGENT/internal/config"
-	
+
 	"go.uber.org/zap"
 )
 
@@ -191,4 +195,103 @@ func emptyResult(ct SearchChannelType, name string, start time.Time) *ChannelRes
 		Chunks:      nil,
 		LatencyMs:   time.Since(start).Milliseconds(),
 	}
+}
+
+// ========== YouComWebSearchChannel 联网检索兜底（priority=20）==========
+
+// YouComWebSearchChannel You.com 联网检索通道（最低优先级）
+type YouComWebSearchChannel struct {
+	cfg    config.WebSearchConfig
+	client *http.Client
+}
+
+func NewYouComWebSearchChannel(cfg config.WebSearchConfig) *YouComWebSearchChannel {
+	timeout := cfg.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = 10
+	}
+	return &YouComWebSearchChannel{
+		cfg:    cfg,
+		client: &http.Client{Timeout: time.Duration(timeout) * time.Second},
+	}
+}
+
+func (c *YouComWebSearchChannel) Name() string          { return "YouComWebSearch" }
+func (c *YouComWebSearchChannel) Priority() int          { return 20 }
+func (c *YouComWebSearchChannel) Type() SearchChannelType { return ChannelWebSearch }
+
+func (c *YouComWebSearchChannel) IsEnabled(ctx context.Context, sc *SearchContext) bool {
+	return c.cfg.Enabled && c.cfg.APIKey != ""
+}
+
+func (c *YouComWebSearchChannel) Search(ctx context.Context, sc *SearchContext) (*ChannelResult, error) {
+	start := time.Now()
+
+	query := sc.RewrittenQuestion
+	if query == "" {
+		query = sc.OriginalQuestion
+	}
+
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("count", fmt.Sprintf("%d", c.cfg.Count))
+
+	apiURL := c.cfg.APIURL
+	if apiURL == "" {
+		apiURL = "https://api.ydc-index.io/search"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return emptyResult(ChannelWebSearch, c.Name(), start), nil
+	}
+	req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		zap.L().Warn("You.com 搜索失败", zap.Error(err))
+		return emptyResult(ChannelWebSearch, c.Name(), start), nil
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Hits []struct {
+			Title    string   `json:"title"`
+			URL      string   `json:"url"`
+			Snippets []string `json:"snippets"`
+		} `json:"hits"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		zap.L().Warn("You.com 解析失败", zap.Error(err))
+		return emptyResult(ChannelWebSearch, c.Name(), start), nil
+	}
+
+	var chunks []RetrievedChunk
+	for _, hit := range result.Hits {
+		for _, snippet := range hit.Snippets {
+			chunks = append(chunks, RetrievedChunk{
+				ID:    hit.URL,
+				Text:  snippet,
+				Score: 0.5,
+				Metadata: map[string]any{
+					"title":  hit.Title,
+					"url":    hit.URL,
+					"source": "web_search",
+				},
+			})
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
+	zap.L().Info("You.com 搜索完成",
+		zap.Int("chunks", len(chunks)),
+		zap.Int64("latency_ms", latency),
+	)
+
+	return &ChannelResult{
+		ChannelType: ChannelWebSearch,
+		ChannelName: c.Name(),
+		Chunks:      chunks,
+		LatencyMs:   latency,
+	}, nil
 }

@@ -58,6 +58,7 @@ const (
 	ChannelVectorGlobal  SearchChannelType = "VECTOR_GLOBAL"
 	ChannelIntentDirected SearchChannelType = "INTENT_DIRECTED"
 	ChannelKeyword        SearchChannelType = "KEYWORD"
+	ChannelWebSearch      SearchChannelType = "WEB_SEARCH"
 )
 
 // SearchChannel 检索通道接口（和 Java 完全一致）
