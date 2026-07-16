@@ -18,19 +18,18 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
-	"goRAGENT/internal/handler/admin"
-	"goRAGENT/internal/handler/auth"
 	"goRAGENT/internal/config"
-	"goRAGENT/internal/model"
+	"goRAGENT/internal/handler/admin"
+	"goRAGENT/internal/handler/chat"
 	"goRAGENT/internal/middleware"
+	"goRAGENT/internal/model"
+	"goRAGENT/internal/router"
 	"goRAGENT/internal/service/ingestion"
 	"goRAGENT/internal/service/mcp"
 	"goRAGENT/internal/service/rag"
 	"goRAGENT/pkg/embedding"
-	"goRAGENT/pkg/jwt"
 	"goRAGENT/pkg/llm"
 	"goRAGENT/pkg/logx"
-	"goRAGENT/internal/handler/chat"
 	"goRAGENT/pkg/milvus"
 	"goRAGENT/pkg/mineru"
 	"goRAGENT/pkg/prompt"
@@ -40,14 +39,22 @@ import (
 
 func loadDotEnv(path string) {
 	data, err := os.ReadFile(path)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") { continue }
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
 		kv := strings.SplitN(line, "=", 2)
-		if len(kv) != 2 { continue }
+		if len(kv) != 2 {
+			continue
+		}
 		k, v := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
-		if os.Getenv(k) == "" { os.Setenv(k, v) }
+		if os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
 	}
 }
 
@@ -59,13 +66,18 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	if err := snowflake.Init(1); err != nil { log.Fatalf("Snowflake: %v", err) }
+	if err := snowflake.Init(1); err != nil {
+		log.Fatalf("Snowflake: %v", err)
+	}
 
 	db, _ := initDB(cfg)
-	if db != nil { config.SetDBGorm(db) }
-
+	if db != nil {
+		config.SetDBGorm(db)
+	}
 	rdb := initRedis(cfg)
-	if rdb != nil { config.SetRedisClient(rdb) }
+	if rdb != nil {
+		config.SetRedisClient(rdb)
+	}
 
 	PrintStartupBanner(cfg.App.Name, cfg.LLM.PrimaryProvider())
 	InitDB(db)
@@ -74,18 +86,16 @@ func main() {
 	go InitEmbedding(cfg.Embedding.HTTPURL)
 	go InitLLM(cfg.LLM.PrimaryProvider(), "", "", "")
 
+	// ====== 依赖装配 ======
 	llmSvc := llm.NewChatService(cfg)
 	prompts := prompt.NewTemplateLoader()
 	memSvc := rag.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
-
 	embedSvc := embedding.NewService(cfg.Embedding.HTTPURL)
 	rerankSvc := rerank.NewService(cfg.Reranker.HTTPURL, cfg.RAG.RerankTopK)
-
-	// M4: MinerU + 入库引擎
 	mineruClient := mineru.NewClient(cfg.Mineru.APIToken)
+
 	var mvStore *milvus.MilvusStore
 	var ingestionEngine *ingestion.Engine
-
 	var searchChannels []model.SearchChannel
 	var err error
 	if mvStore, err = milvus.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
@@ -94,8 +104,6 @@ func main() {
 			rag.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
 		)
 		ingestionEngine = ingestion.NewEngine(db, mineruClient, embedSvc, mvStore, cfg.Ingestion)
-
-		// M5: You.com 联网检索（最低优先级兜底）
 		if cfg.RAG.Search.Channels.WebSearch.Enabled && cfg.RAG.Search.Channels.WebSearch.APIKey != "" {
 			searchChannels = append(searchChannels,
 				rag.NewYouComWebSearchChannel(cfg.RAG.Search.Channels.WebSearch),
@@ -111,21 +119,15 @@ func main() {
 	multiChannelEngine := rag.NewMultiChannelEngine(searchChannels, postProcessors)
 	retrievalEngine := rag.NewRetrievalEngine(cfg.RAG, multiChannelEngine, prompts)
 
-	// 意图树: Loader(Redis→MySQL) → Classifier(LLM) → Resolver
 	intentLoader := rag.NewTreeLoader(db, rdb)
 	intentClassifier := rag.NewClassifier(intentLoader, llmSvc, prompts)
 	intentResolver := rag.NewResolver(intentClassifier)
-
-	// 查询改写: 同义词归一化(Redis→MySQL) → LLM 改写+子问题拆分
 	mappingLoader := rag.NewMappingLoader(db, rdb)
 	queryRewriter := rag.NewRewriter(mappingLoader, llmSvc, prompts, cfg.RAG.QueryRewrite)
-
-	// 歧义引导: 分数比值 + LLM 二次确认 → 选项话术短路
 	guidanceDetector := rag.NewDetector(cfg.Guidance, llmSvc, prompts)
 
 	ragPipeline := rag.NewSimplePipeline(cfg, memSvc, llmSvc, prompts, retrievalEngine, queryRewriter, intentResolver, guidanceDetector)
 
-	// M5: MCP 工具执行器
 	if len(cfg.Mcp.Servers) > 0 {
 		mcpRegistry := mcp.NewRegistry(cfg.Mcp.Servers)
 		mcpExtractor := mcp.NewExtractor(llmSvc, prompts)
@@ -136,8 +138,6 @@ func main() {
 	}
 
 	chatHandler := chat.NewSimpleChatHandler(cfg, ragPipeline, db)
-
-	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
 	adminH := admin.NewHandler(db).
 		SetIntentCacheClearer(intentLoader).
 		SetMappingCacheClearer(mappingLoader).
@@ -145,127 +145,22 @@ func main() {
 		SetIngestionEngine(ingestionEngine).
 		SetDataDir(cfg.Mineru.DataDir)
 
-	// M6: 分布式限流
 	var chatLimiter *middleware.Limiter
 	if rdb != nil {
 		chatLimiter = middleware.NewLimiter(rdb, middleware.Config{
-			Enabled:        true,
-			MaxConcurrent:  10,
-			MaxWaitSeconds: 15,
-			LeaseSeconds:   30,
-			PollIntervalMs: 200,
+			Enabled: true, MaxConcurrent: 10, MaxWaitSeconds: 15,
+			LeaseSeconds: 30, PollIntervalMs: 200,
 		})
 	}
 
-	// ====== 路由 ======
+	// ====== 路由 + 启动 ======
 	gin.SetMode(map[bool]string{true: gin.DebugMode, false: gin.ReleaseMode}[cfg.App.Debug])
 	r := gin.New()
 	r.Use(gin.Recovery())
-
-	api := r.Group("/api/ragent")
-	api.GET("/health", HealthHandler(cfg))
-
-	// 认证（无需 JWT）
-	authH := auth.NewHandler(db, cfg)
-	authH.AuthRoutes(api.Group("/auth"))
-api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-
-	// 示例问题（无需 JWT）
-	api.GET("/rag/sample-questions", adminH.GetSampleQuestionsPublic)
-
-	// RAG 对话（JWT + 限流）
-	ragV3 := api.Group("/rag/v3")
-	ragV3.Use(jwt.Middleware(cfg.SaToken.TokenName))
-	ragV3.GET("/chat", func(c *gin.Context) {
-		if chatLimiter != nil {
-			taskID := c.Query("taskId") // will be generated in handler
-			pos, _, ok := chatLimiter.TryAcquire(taskID)
-			if !ok {
-				c.JSON(429, gin.H{"code": "C000001", "message": "系统繁忙"})
-				return
-			}
-			if pos > 0 {
-				_ = pos // position-based queuing handled in handler via WaitForSlot
-			}
-		}
-		chatHandler.StreamChat(c)
+	router.Register(r, router.Deps{
+		Cfg: cfg, AdminH: adminH, ChatHandler: chatHandler, ChatLimiter: chatLimiter,
 	})
-	ragV3.POST("/stop", chatHandler.StopTask)
 
-	// 会话 + 消息 + 反馈（JWT，路径契约和前端 sessionService/chatService 一致）
-	sessH := rag.NewSessionHandler(db, cfg)
-	sessionGroup := api.Group("", jwt.Middleware(cfg.SaToken.TokenName))
-	sessH.RegisterRoutes(sessionGroup)
-
-	// 用户信息（JWT）
-	api.GET("/user/me", jwt.Middleware(cfg.SaToken.TokenName), auth.CurrentUser(db, cfg))
-
-	// 前台管理接口（不带 /admin 前缀, 避免路由冲突, 仅加知识库/意图树/模型/设置/trace）
-	api.GET("/knowledge-base", adminH.ListKnowledgeBases)
-	api.POST("/knowledge-base", adminH.CreateKnowledgeBase)
-	api.GET("/knowledge-base/:id", adminH.GetKnowledgeBase)
-	api.PUT("/knowledge-base/:id", adminH.UpdateKnowledgeBase)
-	api.DELETE("/knowledge-base/:id", adminH.DeleteKnowledgeBase)
-	api.GET("/knowledge-base/docs/search", adminH.SearchDocuments)
-	api.GET("/intent-tree", adminH.GetIntentTree)
-	api.POST("/intent-tree", adminH.CreateIntentNode)
-	api.GET("/intent-tree/trees", adminH.GetIntentTrees)
-	api.POST("/intent-tree/batch/enable", adminH.BatchEnableIntent)
-	api.POST("/intent-tree/batch/disable", adminH.BatchDisableIntent)
-	api.POST("/intent-tree/batch/delete", adminH.BatchDeleteIntent)
-	api.GET("/models", admin.NewHandler(db).ListModels)
-	api.GET("/settings", admin.NewHandler(db).GetSettings)
-	api.PUT("/settings", admin.NewHandler(db).UpdateSettings)
-	api.GET("/traces/runs", adminH.ListTraceRuns)
-	api.GET("/traces/runs/:runId", adminH.GetTraceDetail)
-
-	// 管理后台（JWT）
-	// 系统设置
-	api.GET("/rag/settings", SettingsHandler(cfg))
-	api.PUT("/rag/settings", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	// Trace
-	api.GET("/rag/traces/runs", adminH.ListTraceRuns)
-	api.GET("/rag/traces/runs/:traceId", adminH.GetTraceDetail)
-	api.GET("/rag/traces/runs/:traceId/nodes", adminH.GetTraceNodes)
-	// 示例问题 CRUD
-	api.GET("/sample-questions", adminH.ListSampleQuestions)
-	api.POST("/sample-questions", adminH.CreateSampleQuestion)
-	// 关键词映射
-	api.GET("/mappings", adminH.ListMappings)
-	api.GET("/mappings/:id", adminH.GetMapping)
-	api.POST("/mappings", adminH.CreateMapping)
-	// 审计日志
-	api.GET("/biz-change-logs", adminH.ListBizChangeLogs)
-	api.GET("/biz-change-logs/:id", adminH.GetBizChangeLog)
-	// 用户管理
-	api.GET("/users", adminH.ListUsers)
-	api.POST("/users", adminH.CreateUser)
-	// 入库
-	api.GET("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.GET("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
-	api.GET("/ingestion/tasks", adminH.ListIngestionTasks)
-	api.GET("/ingestion/tasks/:id", adminH.GetIngestionTask)
-	api.GET("/ingestion/tasks/:id/nodes", adminH.GetIngestionTaskNodes)
-
-	// 前台也用的管理接口（不带 /admin 前缀）
-	api.GET("/knowledge-base/docs/:id/chunks/:chunkId", adminH.GetChunk)
-	api.PUT("/knowledge-base/docs/:id/chunks/:chunkId", adminH.UpdateChunk)
-	api.PATCH("/knowledge-base/docs/:id/chunks/:chunkId/enable", adminH.ToggleChunk)
-	api.PATCH("/knowledge-base/docs/:id/enable", adminH.ToggleDocument)
-	api.PUT("/mappings/:id", adminH.UpdateMapping)
-	api.DELETE("/mappings/:id", adminH.DeleteMapping)
-	api.PUT("/sample-questions/:id", adminH.UpdateSampleQuestion)
-	api.DELETE("/sample-questions/:id", adminH.DeleteSampleQuestion)
-	api.PUT("/users/:id", adminH.UpdateUser)
-	api.DELETE("/users/:id", adminH.DeleteUser)
-	api.PATCH("/users/:id/password", adminH.ChangeUserPassword)
-	api.PUT("/intent-tree/:id", adminH.UpdateIntentNode)
-	api.DELETE("/intent-tree/:id", adminH.DeleteIntentNode)
-
-
-	adminH.RegisterRoutes(api.Group("/admin"))
-
-	// ====== 启动 ======
 	addr := fmt.Sprintf("%s:%d", cfg.App.Host, cfg.App.Port)
 	srv := &http.Server{Addr: addr, Handler: r}
 	go func() {
@@ -285,10 +180,10 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 func initDB(cfg *config.Config) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.Database)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
-	})
-	if err != nil { return nil, err }
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Warn)})
+	if err != nil {
+		return nil, err
+	}
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(cfg.MySQL.PoolSize)
 	sqlDB.SetMaxIdleConns(cfg.MySQL.PoolSize / 2)
@@ -298,11 +193,7 @@ func initDB(cfg *config.Config) (*gorm.DB, error) {
 
 func initRedis(cfg *config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+		Addr: cfg.Redis.Host + ":" + fmt.Sprintf("%d", cfg.Redis.Port),
 		Password: cfg.Redis.Password, DB: cfg.Redis.DB,
 	})
-}
-
-func init() {
-	// register additional routes in serve
 }

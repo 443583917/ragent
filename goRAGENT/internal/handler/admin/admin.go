@@ -19,6 +19,9 @@ type Handler struct {
 
 func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
 
+// DB 暴露 DB 供 router 层使用
+func (h *Handler) DB() *gorm.DB { return h.db }
+
 // SetIntentCacheClearer 注入意图树缓存清除器（意图节点变更后清缓存）
 func (h *Handler) SetIntentCacheClearer(c CacheClearer) *Handler {
 	h.intentCache = c
