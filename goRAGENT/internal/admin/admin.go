@@ -5,13 +5,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nageoffer/ragent/goRAGENT/internal/framework/response"
+	"github.com/nageoffer/ragent/goRAGENT/internal/ingestion"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
 	"gorm.io/gorm"
 )
 
 type Handler struct {
-	db           *gorm.DB
-	intentCache  CacheClearer
-	mappingCache CacheClearer
+	db              *gorm.DB
+	intentCache     CacheClearer
+	mappingCache    CacheClearer
+	milvus          *vectorstore.MilvusStore
+	ingestionEngine *ingestion.Engine
+	dataDir         string
 }
 
 func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
@@ -25,6 +30,24 @@ func (h *Handler) SetIntentCacheClearer(c CacheClearer) *Handler {
 // SetMappingCacheClearer 注入同义词映射缓存清除器（映射变更后清缓存）
 func (h *Handler) SetMappingCacheClearer(c CacheClearer) *Handler {
 	h.mappingCache = c
+	return h
+}
+
+// SetMilvusStore 注入 Milvus Store
+func (h *Handler) SetMilvusStore(m *vectorstore.MilvusStore) *Handler {
+	h.milvus = m
+	return h
+}
+
+// SetIngestionEngine 注入入库引擎
+func (h *Handler) SetIngestionEngine(e *ingestion.Engine) *Handler {
+	h.ingestionEngine = e
+	return h
+}
+
+// SetDataDir 设置文件管理目录
+func (h *Handler) SetDataDir(d string) *Handler {
+	h.dataDir = d
 	return h
 }
 
@@ -55,12 +78,22 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	kb.GET("/docs/:id", h.GetDocument)
 	kb.GET("/docs/:id/preview", h.PreviewDocument)
 	kb.GET("/docs/:id/file", h.DownloadDocument)
+	kb.DELETE("/docs/:id", h.DeleteDocument)
+	kb.PATCH("/docs/:docId/enable", h.ToggleDocument)
 	kb.POST("/docs/:id/chunks", h.CreateChunk)
 	kb.GET("/:id/chunks", h.ListChunksByKB)
+	kb.GET("/docs/:docId/chunks/:chunkId", h.GetChunk)
+	kb.PUT("/docs/:docId/chunks/:chunkId", h.UpdateChunk)
+	kb.PATCH("/docs/:docId/chunks/:chunkId/enable", h.ToggleChunk)
 
 	ds := r.Group("/datasets")
 	ds.GET("", h.ListDatasets)
 	ds.GET("/:id/chunks", h.ListChunks)
+
+	ig := r.Group("/ingestion")
+	ig.GET("/tasks", h.ListIngestionTasks)
+	ig.GET("/tasks/:id", h.GetIngestionTask)
+	ig.GET("/tasks/:id/nodes", h.GetIngestionTaskNodes)
 
 	it := r.Group("/intent-tree")
 	it.GET("", h.GetIntentTree)
@@ -122,22 +155,40 @@ func (h *Handler) DashboardPerformance(c *gin.Context) {
 func (h *Handler) DashboardTrends(c *gin.Context) {
 	c.JSON(http.StatusOK, response.Success(gin.H{"series": []gin.H{}}))
 }
-func (h *Handler) ListKnowledgeBases(c *gin.Context)   { okArr(c) }
-func (h *Handler) CreateKnowledgeBase(c *gin.Context)  { okID(c) }
-func (h *Handler) GetKnowledgeBase(c *gin.Context)     { ok(c) }
-func (h *Handler) UpdateKnowledgeBase(c *gin.Context)  { okEmpty(c) }
-func (h *Handler) DeleteKnowledgeBase(c *gin.Context)  { okEmpty(c) }
-func (h *Handler) ListChunkStrategies(c *gin.Context)  { okArr(c) }
-func (h *Handler) ListDocuments(c *gin.Context)        { okArr(c) }
-func (h *Handler) UploadDocument(c *gin.Context)       { okID(c) }
-func (h *Handler) SearchDocuments(c *gin.Context)      { okArr(c) }
-func (h *Handler) GetDocument(c *gin.Context)          { ok(c) }
-func (h *Handler) PreviewDocument(c *gin.Context)      { ok(c) }
-func (h *Handler) DownloadDocument(c *gin.Context)     { c.String(200, "") }
-func (h *Handler) CreateChunk(c *gin.Context)          { okID(c) }
-func (h *Handler) ListChunksByKB(c *gin.Context)       { okArr(c) }
+
+// Knowledge base — real
+func (h *Handler) ListKnowledgeBases(c *gin.Context)  { h.listKnowledgeBases(c) }
+func (h *Handler) CreateKnowledgeBase(c *gin.Context) { h.createKnowledgeBase(c) }
+func (h *Handler) GetKnowledgeBase(c *gin.Context)    { h.getKnowledgeBase(c) }
+func (h *Handler) UpdateKnowledgeBase(c *gin.Context) { h.updateKnowledgeBase(c) }
+func (h *Handler) DeleteKnowledgeBase(c *gin.Context) { h.deleteKnowledgeBase(c) }
+
+// Documents — real
+func (h *Handler) ListDocuments(c *gin.Context)      { h.listDocuments(c) }
+func (h *Handler) UploadDocument(c *gin.Context)      { h.uploadDocument(c) }
+func (h *Handler) SearchDocuments(c *gin.Context)     { h.searchDocuments(c) }
+func (h *Handler) GetDocument(c *gin.Context)         { h.getDocument(c) }
+func (h *Handler) PreviewDocument(c *gin.Context)     { h.previewDocument(c) }
+func (h *Handler) DownloadDocument(c *gin.Context)    { h.downloadDocument(c) }
+func (h *Handler) DeleteDocument(c *gin.Context)      { h.deleteDocument(c) }
+func (h *Handler) ToggleDocument(c *gin.Context)      { h.toggleDocument(c) }
+
+// Chunks — real
+func (h *Handler) ListChunksByKB(c *gin.Context) { h.listChunksByKB(c) }
+func (h *Handler) ListChunks(c *gin.Context)     { h.listChunks(c) }
+func (h *Handler) GetChunk(c *gin.Context)       { h.getChunk(c) }
+func (h *Handler) UpdateChunk(c *gin.Context)    { h.updateChunk(c) }
+func (h *Handler) ToggleChunk(c *gin.Context)    { h.toggleChunk(c) }
+
+// Ingestion tasks — real
+func (h *Handler) ListIngestionTasks(c *gin.Context)    { h.listIngestionTasks(c) }
+func (h *Handler) GetIngestionTask(c *gin.Context)      { h.getIngestionTask(c) }
+func (h *Handler) GetIngestionTaskNodes(c *gin.Context) { h.getIngestionTaskNodes(c) }
+
+// Still dummy
+func (h *Handler) ListChunkStrategies(c *gin.Context) { okArr(c) }
+func (h *Handler) CreateChunk(c *gin.Context)         { okID(c) }
 func (h *Handler) ListDatasets(c *gin.Context)         { okArr(c) }
-func (h *Handler) ListChunks(c *gin.Context)           { okArr(c) }
 func (h *Handler) GetIntentTree(c *gin.Context)        { h.intentTrees(c) }
 func (h *Handler) CreateIntentNode(c *gin.Context)     { h.createIntentNode(c) }
 func (h *Handler) UpdateIntentNode(c *gin.Context)     { h.updateIntentNode(c) }

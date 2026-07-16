@@ -25,7 +25,9 @@ import (
 	"github.com/nageoffer/ragent/goRAGENT/internal/framework/snowflake"
 	"github.com/nageoffer/ragent/goRAGENT/internal/infra/embedding"
 	"github.com/nageoffer/ragent/goRAGENT/internal/infra/llm"
+	"github.com/nageoffer/ragent/goRAGENT/internal/infra/mineru"
 	"github.com/nageoffer/ragent/goRAGENT/internal/infra/rerank"
+	"github.com/nageoffer/ragent/goRAGENT/internal/ingestion"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/guidance"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/intent"
@@ -33,6 +35,7 @@ import (
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/pipeline"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/postprocessor"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/retrieve/vectorstore"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/rewrite"
 	"github.com/nageoffer/ragent/goRAGENT/internal/user"
@@ -81,14 +84,22 @@ func main() {
 	embedSvc := embedding.NewService(cfg.Embedding.HTTPURL)
 	rerankSvc := rerank.NewService(cfg.Reranker.HTTPURL, cfg.RAG.RerankTopK)
 
+	// M4: MinerU + 入库引擎
+	mineruClient := mineru.NewClient(cfg.Mineru.APIToken)
+	var mvStore *vectorstore.MilvusStore
+	var ingestionEngine *ingestion.Engine
+
 	var searchChannels []retrieve.SearchChannel
-	if mvStore, err := vectorstore.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
+	var err error
+	if mvStore, err = vectorstore.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
 		searchChannels = append(searchChannels,
 			retrieve.NewIntentDirectedChannel(cfg.RAG.Search.Channels.IntentDirected, mvStore),
 			retrieve.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
 		)
+		ingestionEngine = ingestion.NewEngine(db, mineruClient, embedSvc, mvStore, cfg.Ingestion)
 	}
 	postProcessors := []retrieve.PostProcessor{
+		postprocessor.NewMetadataEnrichmentPostProcessor(db),
 		&retrieve.DedupPostProcessor{},
 		&retrieve.FusionPostProcessor{RRFK: 60, RerankCandidateLimit: 50},
 		retrieve.NewRerankPostProcessor(retrieve.RerankerAdapter(rerankSvc), cfg.RAG.RerankEnabled),
@@ -112,7 +123,12 @@ func main() {
 	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline)
 
 	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
-	adminH := admin.NewHandler(db).SetIntentCacheClearer(intentLoader).SetMappingCacheClearer(mappingLoader)
+	adminH := admin.NewHandler(db).
+		SetIntentCacheClearer(intentLoader).
+		SetMappingCacheClearer(mappingLoader).
+		SetMilvusStore(mvStore).
+		SetIngestionEngine(ingestionEngine).
+		SetDataDir(cfg.Mineru.DataDir)
 
 	// ====== 路由 ======
 	gin.SetMode(map[bool]string{true: gin.DebugMode, false: gin.ReleaseMode}[cfg.App.Debug])
@@ -147,12 +163,12 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.GET("/user/me", jwt.Middleware(cfg.SaToken.TokenName), user.CurrentUser(db, cfg))
 
 	// 前台管理接口（不带 /admin 前缀, 避免路由冲突, 仅加知识库/意图树/模型/设置/trace）
-	api.GET("/knowledge-base", admin.NewHandler(db).ListKnowledgeBases)
-	api.POST("/knowledge-base", admin.NewHandler(db).CreateKnowledgeBase)
-	api.GET("/knowledge-base/:id", admin.NewHandler(db).GetKnowledgeBase)
-	api.PUT("/knowledge-base/:id", admin.NewHandler(db).UpdateKnowledgeBase)
-	api.DELETE("/knowledge-base/:id", admin.NewHandler(db).DeleteKnowledgeBase)
-	api.GET("/knowledge-base/docs/search", admin.NewHandler(db).SearchDocuments)
+	api.GET("/knowledge-base", adminH.ListKnowledgeBases)
+	api.POST("/knowledge-base", adminH.CreateKnowledgeBase)
+	api.GET("/knowledge-base/:id", adminH.GetKnowledgeBase)
+	api.PUT("/knowledge-base/:id", adminH.UpdateKnowledgeBase)
+	api.DELETE("/knowledge-base/:id", adminH.DeleteKnowledgeBase)
+	api.GET("/knowledge-base/docs/search", adminH.SearchDocuments)
 	api.GET("/intent-tree", adminH.GetIntentTree)
 	api.POST("/intent-tree", adminH.CreateIntentNode)
 	api.GET("/intent-tree/trees", adminH.GetIntentTrees)
@@ -189,19 +205,15 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	// 入库
 	api.GET("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
 	api.GET("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
-	api.POST("/ingestion/pipelines", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
-	api.PUT("/ingestion/pipelines/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.GET("/ingestion/tasks", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"total":0,"rows":[]gin.H{}}}) })
-	api.GET("/ingestion/tasks/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
-	api.POST("/ingestion/tasks", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
-	api.POST("/ingestion/tasks/upload", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"taskId":"1"}}) })
-	api.GET("/ingestion/tasks/:id/nodes", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":[]gin.H{}}) })
+	api.GET("/ingestion/tasks", adminH.ListIngestionTasks)
+	api.GET("/ingestion/tasks/:id", adminH.GetIngestionTask)
+	api.GET("/ingestion/tasks/:id/nodes", adminH.GetIngestionTaskNodes)
 
 	// 前台也用的管理接口（不带 /admin 前缀）
-	api.GET("/knowledge-base/docs/:docId/chunks/:chunkId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{}}) })
-	api.PUT("/knowledge-base/docs/:docId/chunks/:chunkId", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.PATCH("/knowledge-base/docs/:docId/chunks/:chunkId/enable", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
-	api.PATCH("/knowledge-base/docs/:docId/enable", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
+	api.GET("/knowledge-base/docs/:docId/chunks/:chunkId", adminH.GetChunk)
+	api.PUT("/knowledge-base/docs/:docId/chunks/:chunkId", adminH.UpdateChunk)
+	api.PATCH("/knowledge-base/docs/:docId/chunks/:chunkId/enable", adminH.ToggleChunk)
+	api.PATCH("/knowledge-base/docs/:docId/enable", adminH.ToggleDocument)
 	api.PUT("/mappings/:id", adminH.UpdateMapping)
 	api.DELETE("/mappings/:id", adminH.DeleteMapping)
 	api.PUT("/sample-questions/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
@@ -210,7 +222,6 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.DELETE("/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
 	api.PUT("/intent-tree/:id", adminH.UpdateIntentNode)
 	api.DELETE("/intent-tree/:id", adminH.DeleteIntentNode)
-	api.POST("/knowledge-base/docs/:docId/chunk", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0","data":gin.H{"id":"1"}}) })
 
 
 	adminH.RegisterRoutes(api.Group("/admin"))
