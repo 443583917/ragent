@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +45,7 @@ type Config struct {
 	Memory    MemoryConfig
 	Guidance  GuidanceConfig
 	Ingestion IngestionConfig
+	Mcp       McpConfig
 }
 
 // MemoryConfig 对话记忆配置（和 Java MemoryProperties 对应）
@@ -140,6 +142,7 @@ type SearchConfig struct {
 type ChannelsConfig struct {
 	VectorGlobal  VectorGlobalConfig
 	IntentDirected IntentDirectedConfig
+	WebSearch     WebSearchConfig
 }
 type VectorGlobalConfig struct {
 	Enabled                       bool
@@ -172,6 +175,23 @@ type IngestionConfig struct {
 	ChunkSize      int // 分块大小（字符），默认 1024
 	ChunkOverlap   int // 重叠大小（字符），默认 50
 	EmbedBatchSize int // 嵌入批大小，默认 32
+}
+
+type WebSearchConfig struct {
+	Enabled        bool
+	APIKey         string
+	APIURL         string
+	Count          int
+	TimeoutSeconds int
+}
+
+type McpConfig struct {
+	Servers []McpServerConfig
+}
+
+type McpServerConfig struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 // ========== Provider 模型解析 ==========
@@ -318,6 +338,13 @@ func Load() *Config {
 					IntentDirected: IntentDirectedConfig{
 						Enabled: true, MinIntentScore: 0.4, TopKMultiplier: 2,
 					},
+					WebSearch: WebSearchConfig{
+						Enabled:        envBool("WEB_SEARCH_ENABLED", false),
+						APIKey:         envStr("WEB_SEARCH_API_KEY", ""),
+						APIURL:         envStr("WEB_SEARCH_API_URL", "https://api.ydc-index.io/search"),
+						Count:          envInt("WEB_SEARCH_COUNT", 5),
+						TimeoutSeconds: envInt("WEB_SEARCH_TIMEOUT_SECONDS", 10),
+					},
 				},
 			},
 		},
@@ -341,6 +368,13 @@ func Load() *Config {
 			EmbedBatchSize: envInt("INGESTION_EMBED_BATCH_SIZE", 32),
 		},
 	}
+
+	// MCP 服务器列表（JSON env var）
+	var mcpServers []McpServerConfig
+	if raw := os.Getenv("MCP_SERVERS"); raw != "" {
+		json.Unmarshal([]byte(raw), &mcpServers)
+	}
+	cfg.Mcp = McpConfig{Servers: mcpServers}
 	global = cfg
 	return cfg
 }
