@@ -1,71 +1,56 @@
+// Package auth 认证 HTTP 层：参数绑定/校验 → AuthService → 渲染响应。
 package auth
 
 import (
-	"crypto/md5"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"goRAGENT/internal/config"
-	"goRAGENT/internal/model"
-	"goRAGENT/pkg/jwt"
-	"goRAGENT/pkg/response"
+
 	"goRAGENT/internal/middleware"
-	"gorm.io/gorm"
+	authsvc "goRAGENT/internal/service/auth"
+	"goRAGENT/pkg/errs"
+	"goRAGENT/pkg/response"
 )
 
+// Handler 认证接口处理器（依赖注入 AuthService，不直接访问 DB）。
 type Handler struct {
-	db  *gorm.DB
-	cfg *config.Config
+	svc authsvc.AuthService
 }
 
-func NewHandler(db *gorm.DB, cfg *config.Config) *Handler { return &Handler{db: db, cfg: cfg} }
+// NewHandler 创建认证 Handler。
+func NewHandler(svc authsvc.AuthService) *Handler { return &Handler{svc: svc} }
 
-// md5Hash 临机内联（原 model.MD5Hash），后续任务收敛到 PasswordHasher
-func md5Hash(s string) string { return fmt.Sprintf("%x", md5.Sum([]byte(s))) }
-
-func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/login", h.Login)
-	r.POST("/register", h.Register)
-}
-
+// AuthRoutes 注册 /login /register 路由。
 func (h *Handler) AuthRoutes(r *gin.RouterGroup) {
 	r.POST("/login", h.Login)
 	r.POST("/register", h.Register)
 }
 
+// credentialReq 登录/注册共用请求体。
+type credentialReq struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// Login 账号密码登录。
 func (h *Handler) Login(c *gin.Context) {
-	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
+	var req credentialReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.Failure(response.CodeParamError, "请输入账号和密码"))
 		return
 	}
 
-	var user model.UserDO
-	err := h.db.Where("username = ? AND deleted = 0", req.Username).First(&user).Error
+	result, err := h.svc.Login(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "账号不存在"))
+		c.JSON(statusOf(err), response.FromError(err))
 		return
 	}
-	if user.Password != md5Hash(req.Password) {
-		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "密码错误"))
-		return
-	}
-
-	token, _ := jwt.GenerateToken(fmt.Sprintf("%d", user.ID), user.Username, user.Role, user.Avatar)
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"token": token, "username": user.Username, "role": user.Role,
-	}))
+	c.JSON(http.StatusOK, response.Success(result))
 }
 
+// Register 注册新用户。
 func (h *Handler) Register(c *gin.Context) {
-	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
+	var req credentialReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.Failure(response.CodeParamError, "请输入账号和密码"))
 		return
@@ -75,40 +60,40 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	var exist int64
-	h.db.Model(&model.UserDO{}).Where("username = ? AND deleted = 0", req.Username).Count(&exist)
-	if exist > 0 {
-		c.JSON(http.StatusConflict, response.Failure(response.CodeBusinessError, "账号已存在"))
+	result, err := h.svc.Register(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
+		c.JSON(statusOf(err), response.FromError(err))
 		return
 	}
-
-	user := model.UserDO{Username: req.Username, Password: md5Hash(req.Password), Role: "user"}
-	if err := h.db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, response.Failure(response.CodeServerError, "注册失败"))
-		return
-	}
-
-	token, _ := jwt.GenerateToken(fmt.Sprintf("%d", user.ID), user.Username, user.Role, "")
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"token": token, "username": user.Username, "role": user.Role,
-	}))
+	c.JSON(http.StatusOK, response.Success(result))
 }
 
-func CurrentUser(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		uid := middleware.GetUserID(c.Request.Context())
-		if uid == "" {
-			c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "未登录"))
-			return
-		}
-		var user model.UserDO
-		if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
-			c.JSON(http.StatusNotFound, response.Failure(response.CodeBusinessError, "用户不存在"))
-			return
-		}
-		c.JSON(http.StatusOK, response.Success(gin.H{
-			"userId": fmt.Sprintf("%d", user.ID), "username": user.Username,
-			"role": user.Role, "avatar": user.Avatar,
-		}))
+// CurrentUser 查询当前登录用户信息（JWT 中间件之后调用）。
+func (h *Handler) CurrentUser(c *gin.Context) {
+	uid := middleware.GetUserID(c.Request.Context())
+	if uid == "" {
+		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "未登录"))
+		return
+	}
+	vo, err := h.svc.CurrentUser(c.Request.Context(), uid)
+	if err != nil {
+		// 与原实现一致：查询不到用户返回 404 + 业务错误码
+		c.JSON(http.StatusNotFound, response.FromError(err))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(vo))
+}
+
+// statusOf 错误码 → HTTP 状态码（保持重构前行为：401/409/400/500）。
+func statusOf(err error) int {
+	switch errs.CodeOf(err) {
+	case errs.CodeNotLogin:
+		return http.StatusUnauthorized // 账号不存在 / 密码错误
+	case errs.CodeBusinessError:
+		return http.StatusConflict // 账号已存在
+	case errs.CodeParamError:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError // 注册入库 / 签发凭证失败
 	}
 }

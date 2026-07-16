@@ -23,7 +23,9 @@ import (
 	"goRAGENT/internal/handler/chat"
 	"goRAGENT/internal/middleware"
 	"goRAGENT/internal/model"
+	mysqlrepo "goRAGENT/internal/repository/mysql"
 	"goRAGENT/internal/router"
+	authsvc "goRAGENT/internal/service/auth"
 	"goRAGENT/internal/service/ingestion"
 	"goRAGENT/internal/service/mcp"
 	"goRAGENT/internal/service/rag"
@@ -87,6 +89,8 @@ func main() {
 	go InitLLM(cfg.LLM.PrimaryProvider(), "", "", "")
 
 	// ====== 依赖装配 ======
+	userRepo := mysqlrepo.NewUserRepo(db)
+	authSvc := authsvc.NewAuthService(userRepo, authsvc.NewMD5PasswordHasher())
 	llmSvc := llm.NewChatService(cfg)
 	prompts := prompt.NewTemplateLoader()
 	memSvc := rag.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
@@ -159,6 +163,7 @@ func main() {
 	r.Use(gin.Recovery())
 	router.Register(r, router.Deps{
 		Cfg: cfg, AdminH: adminH, ChatHandler: chatHandler, ChatLimiter: chatLimiter,
+		AuthSvc: authSvc,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.App.Host, cfg.App.Port)

@@ -7,6 +7,7 @@ import (
 	"goRAGENT/internal/handler/auth"
 	"goRAGENT/internal/handler/chat"
 	"goRAGENT/internal/middleware"
+	authsvc "goRAGENT/internal/service/auth"
 	"goRAGENT/internal/service/rag"
 	"goRAGENT/pkg/jwt"
 )
@@ -17,6 +18,7 @@ type Deps struct {
 	AdminH      *admin.Handler
 	ChatHandler *chat.ChatHandler
 	ChatLimiter *middleware.Limiter
+	AuthSvc     authsvc.AuthService
 }
 
 // Register 注册全部路由到 gin.Engine
@@ -25,7 +27,7 @@ func Register(r *gin.Engine, d Deps) {
 	api.GET("/health", HealthHandler(d.Cfg))
 
 	// 认证（无需 JWT）
-	authH := auth.NewHandler(d.AdminH.DB(), d.Cfg)
+	authH := auth.NewHandler(d.AuthSvc)
 	authH.AuthRoutes(api.Group("/auth"))
 	api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code": "0"}) })
 
@@ -44,7 +46,7 @@ func Register(r *gin.Engine, d Deps) {
 	sessH.RegisterRoutes(sessionGroup)
 
 	// 用户信息（JWT）
-	api.GET("/user/me", jwt.Middleware(d.Cfg.SaToken.TokenName), auth.CurrentUser(d.AdminH.DB(), d.Cfg))
+	api.GET("/user/me", jwt.Middleware(d.Cfg.SaToken.TokenName), authH.CurrentUser)
 
 	// 前台管理接口
 	registerFrontendRoutes(api, d.AdminH)
