@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
 	"goRAGENT/pkg/snowflake"
-	"go.uber.org/zap"
 )
 
 // Ingestor 入库触发抽象。DocumentService.Upload 末尾调用 Run 异步启动入库流水线。
@@ -31,12 +31,12 @@ type DocumentService interface {
 }
 
 type documentService struct {
-	docRepo  repository.DocumentRepository
+	docRepo   repository.DocumentRepository
 	chunkRepo repository.ChunkRepository
-	taskRepo repository.IngestionTaskRepository
-	kbRepo   repository.KnowledgeBaseRepository
-	ingestor Ingestor
-	dataDir  string
+	taskRepo  repository.IngestionTaskRepository
+	kbRepo    repository.KnowledgeBaseRepository
+	ingestor  Ingestor
+	dataDir   string
 }
 
 // NewDocumentService 创建文档服务。
@@ -83,7 +83,7 @@ func (s *documentService) Search(ctx context.Context, keyword string, q model.Pa
 func (s *documentService) Get(ctx context.Context, id string) (*model.DocumentVO, error) {
 	do, err := s.docRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errs.NotFound("文档不存在")
+		return nil, errs.Business("文档不存在")
 	}
 	vo := model.DocumentDOToVO(*do)
 	return &vo, nil
@@ -117,12 +117,10 @@ func (s *documentService) Upload(ctx context.Context, kbID, fileName string, rea
 	written, err := io.Copy(dst, reader)
 	if err != nil {
 		zap.L().Error("写入文件失败", zap.String("path", destPath), zap.Error(err))
-		os.Remove(destPath)
-		return nil, errs.WrapServer(err, "文件保存失败")
-	}
-	if err := dst.Sync(); err != nil {
-		zap.L().Error("同步文件失败", zap.String("path", destPath), zap.Error(err))
-		os.Remove(destPath)
+		dst.Close()
+		if rmErr := os.Remove(destPath); rmErr != nil {
+			zap.L().Warn("清理失败文件失败", zap.String("path", destPath), zap.Error(rmErr))
+		}
 		return nil, errs.WrapServer(err, "文件保存失败")
 	}
 
@@ -133,7 +131,10 @@ func (s *documentService) Upload(ctx context.Context, kbID, fileName string, rea
 	}
 	if err := s.docRepo.Create(ctx, &doc); err != nil {
 		zap.L().Error("创建文档记录失败", zap.Error(err))
-		os.Remove(destPath)
+		dst.Close()
+		if rmErr := os.Remove(destPath); rmErr != nil {
+			zap.L().Warn("清理失败文件失败", zap.String("path", destPath), zap.Error(rmErr))
+		}
 		return nil, errs.WrapBusiness(err, "创建文档失败")
 	}
 
@@ -144,7 +145,10 @@ func (s *documentService) Upload(ctx context.Context, kbID, fileName string, rea
 	if err := s.taskRepo.Create(ctx, &task); err != nil {
 		zap.L().Error("创建入库任务失败", zap.Error(err))
 		// 回滚：删除已写文件 + 删除文档记录
-		os.Remove(destPath)
+		dst.Close()
+		if rmErr := os.Remove(destPath); rmErr != nil {
+			zap.L().Warn("清理失败文件失败", zap.String("path", destPath), zap.Error(rmErr))
+		}
 		_ = s.docRepo.SoftDelete(ctx, docID)
 		return nil, errs.WrapBusiness(err, "创建入库任务失败")
 	}
@@ -227,8 +231,7 @@ func (s *documentService) Toggle(ctx context.Context, docID string) (int, error)
 	// 查找任一 chunk 确定当前 enabled 状态
 	chunks, _, err := s.chunkRepo.ListByDoc(ctx, docID, model.PageQuery{Page: 1, Size: 1})
 	if err != nil {
-		zap.L().Error("查询 Chunk 状态失败", zap.Error(err))
-		return 0, errs.WrapServer(err, "操作失败")
+		zap.L().Warn("查询 Chunk 状态失败，继续执行 Toggle", zap.Error(err))
 	}
 
 	currentEnabled := 0

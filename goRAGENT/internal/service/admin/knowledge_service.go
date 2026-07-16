@@ -3,11 +3,11 @@ package admin
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
 	"goRAGENT/pkg/snowflake"
-	"go.uber.org/zap"
 )
 
 // VectorStore 向量库抽象（Milvus），KnowledgeBaseService 在创建/删除 KB 时操作。
@@ -75,7 +75,7 @@ func (s *knowledgeBaseService) Create(ctx context.Context, req model.KnowledgeBa
 func (s *knowledgeBaseService) Get(ctx context.Context, id string) (*model.KnowledgeBaseVO, error) {
 	do, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errs.NotFound("知识库不存在")
+		return nil, errs.Business("知识库不存在")
 	}
 	vo := model.KnowledgeBaseDOToVO(*do)
 	return &vo, nil

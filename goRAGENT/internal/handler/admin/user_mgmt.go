@@ -7,9 +7,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"goRAGENT/pkg/response"
-	"goRAGENT/internal/model"
 	"go.uber.org/zap"
+	"goRAGENT/internal/model"
+	"goRAGENT/pkg/response"
 )
 
 type userVO = model.UserVO
@@ -67,7 +67,7 @@ func (h *Handler) createUser(c *gin.Context) {
 	if role == "" {
 		role = "user"
 	}
-		// MD5 hashing (same as user.go pattern)
+	// MD5 hashing (same as user.go pattern)
 	pwdHash := md5Hash(req.Password) // TODO: remove after Task 5
 
 	if err := h.db.WithContext(c.Request.Context()).Exec(

@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
-	"go.uber.org/zap"
 )
 
 // DashboardService 仪表盘读模型服务接口。
@@ -88,13 +88,13 @@ func (s *dashboardService) Performance(ctx context.Context, window string) (*mod
 	}
 
 	return &model.PerformanceResp{
-		Window:        window,
-		AvgLatencyMs:  pf.AvgLatencyMs,
-		P95LatencyMs:  pf.P95LatencyMs,
-		SuccessRate:   pf.SuccessRate,
-		ErrorRate:     pf.ErrorRate,
-		NoDocRate:     pf.NoDocRate,
-		SlowRate:      pf.SlowRate,
+		Window:       window,
+		AvgLatencyMs: pf.AvgLatencyMs,
+		P95LatencyMs: pf.P95LatencyMs,
+		SuccessRate:  pf.SuccessRate,
+		ErrorRate:    pf.ErrorRate,
+		NoDocRate:    pf.NoDocRate,
+		SlowRate:     pf.SlowRate,
 	}, nil
 }
 

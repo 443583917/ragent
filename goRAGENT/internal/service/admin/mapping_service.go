@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
 	"goRAGENT/pkg/snowflake"
-	"go.uber.org/zap"
 )
 
 // MappingService 关键词映射管理服务接口。
@@ -53,7 +53,7 @@ func (s *mappingService) List(ctx context.Context, q model.PageQuery, keyword st
 func (s *mappingService) Get(ctx context.Context, id string) (*model.MappingVO, error) {
 	row, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errs.NotFound("映射不存在")
+		return nil, errs.Business("映射不存在")
 	}
 	vo := model.MappingToVO(*row)
 	return &vo, nil
@@ -81,7 +81,7 @@ func (s *mappingService) Update(ctx context.Context, id string, req model.Mappin
 }
 
 func (s *mappingService) Delete(ctx context.Context, id string, operator string) error {
-	if err := s.repo.SoftDelete(ctx, id); err != nil {
+	if err := s.repo.UpdateFields(ctx, id, map[string]any{"deleted": 1, "update_by": operator}); err != nil {
 		zap.L().Error("删除映射失败", zap.Error(err))
 		return errs.WrapBusiness(err, "删除失败")
 	}

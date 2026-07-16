@@ -21,7 +21,7 @@ type SampleQuestionPayload struct {
 func SQDOToItem(d SampleQuestionDO) SampleQuestionItemVO {
 	return SampleQuestionItemVO{
 		ID: d.ID, Title: d.Title, Description: d.Description,
-		Question: d.Question,
+		Question:   d.Question,
 		CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
 		UpdateTime: d.UpdateTime.Format("2006-01-02 15:04:05"),
 	}

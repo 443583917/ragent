@@ -3,11 +3,11 @@ package admin
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
 	"goRAGENT/pkg/snowflake"
-	"go.uber.org/zap"
 )
 
 // IntentService 意图树管理服务接口。
@@ -70,7 +70,7 @@ func (s *intentService) Update(ctx context.Context, id string, req model.IntentN
 }
 
 func (s *intentService) Delete(ctx context.Context, id string, operator string) error {
-	if err := s.repo.SoftDelete(ctx, id); err != nil {
+	if err := s.repo.UpdateFields(ctx, id, map[string]any{"deleted": 1, "update_by": operator}); err != nil {
 		zap.L().Error("删除意图节点失败", zap.Error(err))
 		return errs.WrapBusiness(err, "删除失败")
 	}

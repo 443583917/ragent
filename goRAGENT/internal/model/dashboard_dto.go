@@ -47,21 +47,21 @@ type KpiVO struct {
 
 // OverviewResp 概览响应。
 type OverviewResp struct {
-	Window        string            `json:"window"`
-	CompareWindow string            `json:"compareWindow"`
-	UpdatedAt     int64             `json:"updatedAt"`
-	Kpis          map[string]KpiVO  `json:"kpis"`
+	Window        string           `json:"window"`
+	CompareWindow string           `json:"compareWindow"`
+	UpdatedAt     int64            `json:"updatedAt"`
+	Kpis          map[string]KpiVO `json:"kpis"`
 }
 
 // PerformanceResp 性能指标响应。
 type PerformanceResp struct {
-	Window        string  `json:"window"`
-	AvgLatencyMs  float64 `json:"avgLatencyMs"`
-	P95LatencyMs  float64 `json:"p95LatencyMs"`
-	SuccessRate   float64 `json:"successRate"`
-	ErrorRate     float64 `json:"errorRate"`
-	NoDocRate     float64 `json:"noDocRate"`
-	SlowRate      float64 `json:"slowRate"`
+	Window       string  `json:"window"`
+	AvgLatencyMs float64 `json:"avgLatencyMs"`
+	P95LatencyMs float64 `json:"p95LatencyMs"`
+	SuccessRate  float64 `json:"successRate"`
+	ErrorRate    float64 `json:"errorRate"`
+	NoDocRate    float64 `json:"noDocRate"`
+	SlowRate     float64 `json:"slowRate"`
 }
 
 // TrendPoint 趋势数据点。
@@ -78,8 +78,8 @@ type TrendSeries struct {
 
 // TrendsResp 趋势响应。
 type TrendsResp struct {
-	Metric      string         `json:"metric"`
-	Window      string         `json:"window"`
-	Granularity string         `json:"granularity"`
-	Series      []TrendSeries  `json:"series"`
+	Metric      string        `json:"metric"`
+	Window      string        `json:"window"`
+	Granularity string        `json:"granularity"`
+	Series      []TrendSeries `json:"series"`
 }

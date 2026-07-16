@@ -4,10 +4,10 @@ import (
 	"context"
 	"unicode/utf8"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
-	"go.uber.org/zap"
 )
 
 // ChunkService 文档块管理服务接口。
@@ -57,7 +57,7 @@ func (s *chunkService) ListByDoc(ctx context.Context, docID string, q model.Page
 func (s *chunkService) Get(ctx context.Context, id string) (*model.ChunkVO, error) {
 	do, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errs.NotFound("Chunk 不存在")
+		return nil, errs.Business("Chunk 不存在")
 	}
 	vo := model.ChunkDOToVO(*do)
 	return &vo, nil

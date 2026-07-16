@@ -4,10 +4,10 @@ import (
 	"context"
 	"strconv"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
-	"go.uber.org/zap"
 )
 
 // TraceService RAG Trace 查询服务接口。
@@ -50,7 +50,7 @@ func (s *traceService) GetDetail(ctx context.Context, runID string) (*model.RagT
 
 	run, err := s.repo.FindRun(ctx, runID)
 	if err != nil {
-		return nil, errs.NotFound("Trace 不存在")
+		return nil, errs.Business("Trace 不存在")
 	}
 
 	// 修复：第二个查询（ListNodes）的 error 不再忽略

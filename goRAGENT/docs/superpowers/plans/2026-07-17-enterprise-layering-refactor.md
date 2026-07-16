@@ -837,6 +837,8 @@ type AuthService interface {
 
 ### Task 6: chat + session 域重构
 
+> ⚠️ **接口缺口（Task 2 审查确认）**：现有 session/memory 代码的会话查询带 `user_id` 归属条件（session_service.go 的 Rename/Delete/ListMessages/updateVote、memory_service.go 的 loadHistory/Count），而 Conversation/Message/Summary repository 首版接口未表达。本任务必须为涉及的方法增加 user 归属参数（如 `UpdateFieldsForUser(ctx, id, userID, updates)`、`SoftDeleteForUser`、`ListByConversationForUser`、`UpdateVoteForUser`），签名以现有代码的 WHERE 条件为准逐一对照，同步补 mysql 实现；**严禁丢掉任何 user_id 过滤条件（越权风险）**。
+
 **Files:**
 - Create: `internal/service/rag/trace_recorder.go`（`TraceRecorder` 接口：`StartRun/FinishRun/CancelByTaskID`，实现依赖 `repository.TraceRepository`；状态值用 `model.TraceStatus*` 常量）
 - Create: `internal/handler/session/handler.go`（从 `internal/service/rag/session_service.go` 拆出 HTTP 部分）
@@ -852,6 +854,8 @@ type AuthService interface {
 - [ ] **Step 5**: `git commit -m "refactor(chat): 会话与追踪数据访问下沉 repository"`
 
 ### Task 7: rag/ingestion 服务内 DB 访问改走 repository
+
+> ⚠️ **接口缺口（Task 2 审查确认）**：memory/summary 的「最近 N 条 user 角色消息」窗口（summary_service.go 的 `role='user' ORDER BY id DESC LIMIT keepTurns`）无法用现有 `ListRecent` 表达，本任务需增加 `ListRecentByRole(ctx, convID, userID, role string, limit int)` 之类的方法（签名对照现有 SQL），同步补 mysql 实现；user_id 条件同 Task 6 的警告，一个都不能丢。
 
 **Files:**
 - Modify: `internal/service/rag/memory_service.go`（db 字段 → Conversation/Message/Summary 三个 repository 接口；`role = 'user'` 换 `model.MsgRoleUser`）

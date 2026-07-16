@@ -13,11 +13,11 @@ import (
 // mockUserRepo 手写 Mock UserRepository
 type mockUserRepo struct {
 	repository.UserRepository
-	listFn           func(ctx context.Context, q model.PageQuery, keyword string) ([]model.UserDO, int64, error)
+	listFn             func(ctx context.Context, q model.PageQuery, keyword string) ([]model.UserDO, int64, error)
 	existsByUsernameFn func(ctx context.Context, username string) (bool, error)
-	createFn         func(ctx context.Context, u *model.UserDO) error
-	updateFieldsFn   func(ctx context.Context, id string, updates map[string]any) error
-	softDeleteFn     func(ctx context.Context, id string) error
+	createFn           func(ctx context.Context, u *model.UserDO) error
+	updateFieldsFn     func(ctx context.Context, id string, updates map[string]any) error
+	softDeleteFn       func(ctx context.Context, id string) error
 }
 
 func (m *mockUserRepo) List(ctx context.Context, q model.PageQuery, keyword string) ([]model.UserDO, int64, error) {

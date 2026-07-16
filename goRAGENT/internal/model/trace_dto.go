@@ -38,7 +38,7 @@ type RagTraceNodeVO struct {
 
 // RagTraceDetailVO 匹配前端 RagTraceDetail 类型（包含 Run + Nodes）。
 type RagTraceDetailVO struct {
-	Run   RagTraceRunVO   `json:"run"`
+	Run   RagTraceRunVO    `json:"run"`
 	Nodes []RagTraceNodeVO `json:"nodes"`
 }
 

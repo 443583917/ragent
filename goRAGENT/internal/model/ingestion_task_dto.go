@@ -24,6 +24,6 @@ func TaskDOToVO(d IngestionTaskDO) IngestionTaskVO {
 		ID: d.ID, KbID: d.KbID, DocID: d.DocID, Status: d.Status,
 		TotalChunks: d.TotalChunks, CompletedChunks: d.CompletedChunks,
 		ErrorMessage: d.ErrorMessage,
-		CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
+		CreateTime:   d.CreateTime.Format("2006-01-02 15:04:05"),
 	}
 }

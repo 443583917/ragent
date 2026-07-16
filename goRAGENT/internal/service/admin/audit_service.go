@@ -3,10 +3,10 @@ package admin
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
-	"go.uber.org/zap"
 )
 
 // AuditService 审计日志服务接口。
@@ -48,7 +48,7 @@ func (s *auditService) List(ctx context.Context, q model.PageQuery, entityType s
 func (s *auditService) Get(ctx context.Context, id string) (*model.BizChangeLogVO, error) {
 	do, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errs.NotFound("日志不存在")
+		return nil, errs.Business("日志不存在")
 	}
 	return &model.BizChangeLogVO{
 		ID: do.ID, EntityType: do.EntityType, EntityID: do.EntityID,

@@ -3,11 +3,11 @@ package admin
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/internal/service/auth"
 	"goRAGENT/pkg/errs"
-	"go.uber.org/zap"
 )
 
 // UserService 用户管理服务接口。

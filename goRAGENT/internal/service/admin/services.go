@@ -20,17 +20,17 @@ type CacheClearer interface {
 
 // Services 聚合全部管理后台域服务，由 bootstrap 装配并按需注入各 handler。
 type Services struct {
-	Dashboard          DashboardService
-	KnowledgeBase      KnowledgeBaseService
-	Document           DocumentService
-	Chunk              ChunkService
-	IngestionTask      IngestionTaskService
-	Intent             IntentService
-	Mapping            MappingService
-	User               UserService
-	Trace              TraceService
-	Audit              AuditService
-	SampleQuestion     SampleQuestionService
+	Dashboard      DashboardService
+	KnowledgeBase  KnowledgeBaseService
+	Document       DocumentService
+	Chunk          ChunkService
+	IngestionTask  IngestionTaskService
+	Intent         IntentService
+	Mapping        MappingService
+	User           UserService
+	Trace          TraceService
+	Audit          AuditService
+	SampleQuestion SampleQuestionService
 }
 
 // NewServices 构造管理后台所有域服务。

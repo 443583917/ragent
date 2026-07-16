@@ -3,11 +3,11 @@ package admin
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"goRAGENT/internal/model"
 	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/errs"
 	"goRAGENT/pkg/snowflake"
-	"go.uber.org/zap"
 )
 
 // SampleQuestionService 示例问题管理服务接口。
