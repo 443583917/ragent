@@ -91,7 +91,7 @@ go test ./internal/rag/intent/... ./internal/admin/... -count=1
 | M3-4 | 歧义引导：分数比值≥阈值或边界区间 LLM 二次确认 → 推送选项短路 | IntentGuidanceService | `internal/rag/guidance/` |
 | M3-5 | SYSTEM 意图短路直答（支持节点模板覆盖） | handleSystemOnly | `pipeline.go` |
 
-### M4：知识库/文档管理 + 入库 Pipeline（P2 · 内容供给）
+### M4：知识库/文档管理 + 入库 Pipeline（P2 · 内容供给）✅ 已完成并验收（2026-07-17）
 
 | # | 任务 | 对照 Java | 产出 |
 |:--|------|----------|------|
@@ -102,7 +102,7 @@ go test ./internal/rag/intent/... ./internal/admin/... -count=1
 | M4-5 | 入库任务监控 API | IngestionController | `internal/admin/` |
 | M4-6 | 检索元数据富化后处理器（回表补 docId/docName） | MetadataEnrichmentPostProcessor | `internal/rag/retrieve/` |
 
-### M5：MCP + 联网检索（P2 · 能力扩展）
+### M5：MCP + 联网检索（P2 · 能力扩展）✅ 已完成并验收（2026-07-17）
 
 | # | 任务 | 对照 Java | 产出 |
 |:--|------|----------|------|
@@ -112,7 +112,7 @@ go test ./internal/rag/intent/... ./internal/admin/... -count=1
 | M5-4 | MCP_ONLY/MIXED Prompt 场景 | RAGPromptService | `prompt/planner.go` |
 | M5-5 | You.com 联网检索通道（优先级最低） | YouComWebSearchChannel | `internal/rag/retrieve/` |
 
-### M6：平台能力（P3 · 生产化）
+### M6：平台能力（P3 · 生产化）✅ 已完成并验收（2026-07-17）
 
 | # | 任务 | 对照 Java | 产出 |
 |:--|------|----------|------|
