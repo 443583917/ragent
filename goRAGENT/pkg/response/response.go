@@ -1,6 +1,12 @@
+// Package response 提供统一 HTTP 响应体（和 Java Result 对应）。
 package response
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+
+	"goRAGENT/pkg/errs"
+)
 
 // Result 统一响应体（和 Java Result 对应）
 type Result struct {
@@ -9,15 +15,16 @@ type Result struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-// 标准错误码（和 Java BaseErrorCode 对应）
+// 标准错误码（和 Java BaseErrorCode 对应；语义定义收敛在 pkg/errs）
 const (
 	CodeSuccess       = "0"
-	CodeNotLogin      = "A000001"
-	CodeForbidden     = "A000002"
-	CodeParamError    = "B000001"
-	CodeBusinessError = "B000002"
-	CodeRemoteError   = "C000001"
-	CodeServerError   = "S000001"
+	CodeNotLogin      = errs.CodeNotLogin
+	CodeForbidden     = errs.CodeForbidden
+	CodeParamError    = errs.CodeParamError
+	CodeBusinessError = errs.CodeBusinessError
+	CodeNotFound      = errs.CodeNotFound
+	CodeRemoteError   = errs.CodeRemoteError
+	CodeServerError   = errs.CodeServerError
 )
 
 // Success 成功响应
@@ -35,9 +42,15 @@ func Failure(code, message string) *Result {
 	return &Result{Code: code, Message: message}
 }
 
-// WriteJSON 直接写入 HTTP JSON 响应（非 SSE 场景）
+// FromError 将任意 error 转换为统一响应体。
+// AppError 携带的错误码/文案原样透出；未知 error 统一渲染为服务器内部错误，避免泄露内部细节。
+func FromError(err error) *Result {
+	return &Result{Code: errs.CodeOf(err), Message: errs.MessageOf(err)}
+}
+
+// WriteJSON 直接写入 HTTP JSON 响应（非 Gin 场景，如原生 http.Handler / SSE 前置错误）
 func WriteJSON(w http.ResponseWriter, statusCode int, r *Result) {
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	w.WriteHeader(statusCode)
-	// 由 Gin 处理序列化，此处仅提供结构体
+	_ = json.NewEncoder(w).Encode(r)
 }
