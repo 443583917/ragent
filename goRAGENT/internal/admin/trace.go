@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 
@@ -10,53 +11,111 @@ import (
 	"go.uber.org/zap"
 )
 
-type traceRunVO struct {
-	ID             int64  `json:"id"`
-	RunID          string `json:"runId"`
-	ConversationID string `json:"conversationId"`
-	UserID         string `json:"userId"`
-	Question       string `json:"question"`
-	Status         string `json:"status"`
+// ragTraceRunVO 匹配前端 RagTraceRun 类型
+type ragTraceRunVO struct {
+	TraceID        string `json:"traceId"`
+	TraceName      string `json:"traceName,omitempty"`
+	EntryMethod    string `json:"entryMethod,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
+	TaskID         string `json:"taskId,omitempty"`
+	UserName       string `json:"userName,omitempty"`
+	Username       string `json:"username,omitempty"`
+	UserID         string `json:"userId,omitempty"`
+	Status         string `json:"status,omitempty"`
 	ErrorMessage   string `json:"errorMessage,omitempty"`
-	CreateTime     string `json:"createTime"`
+	DurationMs     int64  `json:"durationMs,omitempty"`
+	TtftMs         int64  `json:"ttftMs,omitempty"`
+	Question       string `json:"question,omitempty"`
+	StartTime      string `json:"startTime,omitempty"`
+	EndTime        string `json:"endTime,omitempty"`
 }
 
-type traceNodeVO struct {
-	ID           int64  `json:"id"`
-	NodeName     string `json:"nodeName"`
-	NodeType     string `json:"nodeType"`
-	DurationMs   int64  `json:"durationMs"`
+// ragTraceNodeVO 匹配前端 RagTraceNode 类型
+type ragTraceNodeVO struct {
+	TraceID      string `json:"traceId"`
+	NodeID       string `json:"nodeId"`
+	ParentNodeID string `json:"parentNodeId,omitempty"`
+	Depth        int    `json:"depth,omitempty"`
+	NodeType     string `json:"nodeType,omitempty"`
+	NodeName     string `json:"nodeName,omitempty"`
+	ClassName    string `json:"className,omitempty"`
+	MethodName   string `json:"methodName,omitempty"`
+	Status       string `json:"status,omitempty"`
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	DurationMs   int64  `json:"durationMs,omitempty"`
+	StartTime    string `json:"startTime,omitempty"`
+	EndTime      string `json:"endTime,omitempty"`
+}
+
+// ragTraceDetailVO 匹配前端 RagTraceDetail 类型
+type ragTraceDetailVO struct {
+	Run   ragTraceRunVO   `json:"run"`
+	Nodes []ragTraceNodeVO `json:"nodes"`
+}
+
+func runDOtoVO(r rag.TraceRunDO) ragTraceRunVO {
+	startTime := r.CreateTime.Format("2006-01-02 15:04:05")
+	endTime := r.UpdateTime.Format("2006-01-02 15:04:05")
+	if r.UpdateTime.Before(r.CreateTime) || r.UpdateTime.Equal(r.CreateTime) {
+		endTime = ""
+	}
+
+	return ragTraceRunVO{
+		TraceID: r.RunID, TraceName: "Chat", EntryMethod: "HTTP",
+		ConversationID: r.ConversationID, TaskID: r.RunID,
+		UserID: r.UserID, Username: r.UserID, UserName: r.UserID,
+		Status: r.Status, ErrorMessage: r.ErrorMessage,
+		Question: r.Question, StartTime: startTime, EndTime: endTime,
+	}
 }
 
 func (h *Handler) listTraceRunsReal(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	current, _ := strconv.Atoi(c.DefaultQuery("current", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if current < 1 {
+		current = 1
+	}
+	if size < 1 {
+		size = 10
+	}
+	traceID := c.Query("traceId")
+	convID := c.Query("conversationId")
 
 	var dos []rag.TraceRunDO
 	var total int64
-	h.db.WithContext(c.Request.Context()).Model(&rag.TraceRunDO{}).Count(&total)
-	if err := h.db.WithContext(c.Request.Context()).
-		Order("create_time DESC").Offset((page - 1) * pageSize).Limit(pageSize).
-		Find(&dos).Error; err != nil {
+	query := h.db.WithContext(c.Request.Context()).Model(&rag.TraceRunDO{})
+	if traceID != "" {
+		query = query.Where("run_id = ?", traceID)
+	}
+	if convID != "" {
+		query = query.Where("conversation_id = ?", convID)
+	}
+	query.Count(&total)
+	if err := query.Order("create_time DESC").Offset((current - 1) * size).Limit(size).Find(&dos).Error; err != nil {
 		zap.L().Error("查询 Trace 列表失败", zap.Error(err))
 		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
 		return
 	}
 
-	vos := make([]traceRunVO, 0, len(dos))
+	vos := make([]ragTraceRunVO, 0, len(dos))
 	for _, d := range dos {
-		vos = append(vos, traceRunVO{
-			ID: d.ID, RunID: d.RunID, ConversationID: d.ConversationID,
-			UserID: d.UserID, Question: d.Question, Status: d.Status,
-			ErrorMessage: d.ErrorMessage, CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-		})
+		vos = append(vos, runDOtoVO(d))
 	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
+	if vos == nil {
+		vos = []ragTraceRunVO{}
+	}
+	pages := int(math.Ceil(float64(total) / float64(size)))
+
+	c.JSON(http.StatusOK, response.Success(gin.H{
+		"records": vos, "total": total, "size": size, "current": current, "pages": pages,
+	}))
 }
 
 func (h *Handler) getTraceDetailReal(c *gin.Context) {
-	runID := c.Param("runId")
+	runID := c.Param("traceId")
+	if runID == "" {
+		runID = c.Param("runId")
+	}
 	var run rag.TraceRunDO
 	if err := h.db.WithContext(c.Request.Context()).
 		Where("run_id = ?", runID).First(&run).Error; err != nil {
@@ -64,58 +123,40 @@ func (h *Handler) getTraceDetailReal(c *gin.Context) {
 		return
 	}
 
-	var nodes []rag.TraceNodeDO
-	h.db.WithContext(c.Request.Context()).
-		Where("run_id = ?", runID).Order("id ASC").Find(&nodes)
-
-	nodeVOs := make([]traceNodeVO, 0, len(nodes))
-	for _, n := range nodes {
-		nodeVOs = append(nodeVOs, traceNodeVO{
-			ID: n.ID, NodeName: n.NodeName, NodeType: n.NodeType,
-			DurationMs: n.DurationMs, ErrorMessage: n.ErrorMessage,
+	var nodeDOs []rag.TraceNodeDO
+	h.db.WithContext(c.Request.Context()).Where("run_id = ?", runID).Order("id ASC").Find(&nodeDOs)
+	nodeVOs := make([]ragTraceNodeVO, 0, len(nodeDOs))
+	for _, n := range nodeDOs {
+		nodeVOs = append(nodeVOs, ragTraceNodeVO{
+			TraceID: n.RunID, NodeID: strconv.FormatInt(n.ID, 10),
+			ParentNodeID: n.ParentNodeID, NodeType: n.NodeType, NodeName: n.NodeName,
+			Status: "DONE", DurationMs: n.DurationMs, ErrorMessage: n.ErrorMessage,
 		})
 	}
+	if nodeVOs == nil {
+		nodeVOs = []ragTraceNodeVO{}
+	}
 
-	c.JSON(http.StatusOK, response.Success(gin.H{
-		"run": traceRunVO{
-			ID: run.ID, RunID: run.RunID, ConversationID: run.ConversationID,
-			UserID: run.UserID, Question: run.Question, Status: run.Status,
-			ErrorMessage: run.ErrorMessage, CreateTime: run.CreateTime.Format("2006-01-02 15:04:05"),
-		},
-		"nodes": nodeVOs,
-	}))
+	c.JSON(http.StatusOK, response.Success(ragTraceDetailVO{Run: runDOtoVO(run), Nodes: nodeVOs}))
 }
 
 func (h *Handler) getTraceNodesReal(c *gin.Context) {
 	runID := c.Param("traceId")
-	var nodes []rag.TraceNodeDO
-	h.db.WithContext(c.Request.Context()).
-		Where("run_id = ?", runID).Order("id ASC").Find(&nodes)
+	var nodeDOs []rag.TraceNodeDO
+	h.db.WithContext(c.Request.Context()).Where("run_id = ?", runID).Order("id ASC").Find(&nodeDOs)
 
-	vos := make([]traceNodeVO, 0, len(nodes))
-	for _, n := range nodes {
-		vos = append(vos, traceNodeVO{
-			ID: n.ID, NodeName: n.NodeName, NodeType: n.NodeType,
-			DurationMs: n.DurationMs, ErrorMessage: n.ErrorMessage,
+	vos := make([]ragTraceNodeVO, 0, len(nodeDOs))
+	for _, n := range nodeDOs {
+		vos = append(vos, ragTraceNodeVO{
+			TraceID: n.RunID, NodeID: strconv.FormatInt(n.ID, 10),
+			ParentNodeID: n.ParentNodeID, NodeType: n.NodeType, NodeName: n.NodeName,
+			Status: "DONE", DurationMs: n.DurationMs, ErrorMessage: n.ErrorMessage,
 		})
+	}
+	if vos == nil {
+		vos = []ragTraceNodeVO{}
 	}
 	c.JSON(http.StatusOK, response.Success(vos))
 }
 
 func (h *Handler) GetTraceNodes(c *gin.Context) { h.getTraceNodesReal(c) }
-
-// TraceWriter 供 Pipeline 写入 trace 记录
-type TraceWriter struct {
-	db *rag.TraceRunDO // not used directly, we go through Handler
-}
-
-func (h *Handler) WriteTraceRun(run *rag.TraceRunDO) error {
-	return h.db.Create(run).Error
-}
-
-func (h *Handler) WriteTraceNodes(nodes []rag.TraceNodeDO) error {
-	if len(nodes) == 0 {
-		return nil
-	}
-	return h.db.Create(&nodes).Error
-}

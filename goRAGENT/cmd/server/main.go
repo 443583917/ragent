@@ -221,8 +221,8 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	api.GET("/models", admin.NewHandler(db).ListModels)
 	api.GET("/settings", admin.NewHandler(db).GetSettings)
 	api.PUT("/settings", admin.NewHandler(db).UpdateSettings)
-	api.GET("/traces/runs", admin.NewHandler(db).ListTraceRuns)
-	api.GET("/traces/runs/:runId", admin.NewHandler(db).GetTraceDetail)
+	api.GET("/traces/runs", adminH.ListTraceRuns)
+	api.GET("/traces/runs/:runId", adminH.GetTraceDetail)
 
 	// 管理后台（JWT）
 	// 系统设置
