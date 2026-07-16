@@ -18,29 +18,24 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
-	"goRAGENT/internal/admin"
+	"goRAGENT/internal/handler/admin"
+	"goRAGENT/internal/handler/auth"
 	"goRAGENT/internal/config"
-	"goRAGENT/internal/framework/jwt"
-	"goRAGENT/internal/framework/logx"
-	"goRAGENT/internal/framework/snowflake"
-	"goRAGENT/internal/infra/embedding"
-	"goRAGENT/internal/infra/llm"
-	"goRAGENT/internal/framework/ratelimit"
-	"goRAGENT/internal/infra/mineru"
-	"goRAGENT/internal/infra/rerank"
-	"goRAGENT/internal/ingestion"
-	"goRAGENT/internal/rag"
-	"goRAGENT/internal/rag/guidance"
-	"goRAGENT/internal/rag/intent"
-	"goRAGENT/internal/rag/mcp"
-	"goRAGENT/internal/rag/memory"
-	"goRAGENT/internal/rag/pipeline"
-	"goRAGENT/internal/rag/prompt"
-	"goRAGENT/internal/rag/retrieve"
-	"goRAGENT/internal/rag/retrieve/postprocessor"
-	"goRAGENT/internal/rag/retrieve/vectorstore"
-	"goRAGENT/internal/rag/rewrite"
-	"goRAGENT/internal/user"
+	"goRAGENT/internal/model"
+	"goRAGENT/internal/middleware"
+	"goRAGENT/internal/service/ingestion"
+	"goRAGENT/internal/service/mcp"
+	"goRAGENT/internal/service/rag"
+	"goRAGENT/pkg/embedding"
+	"goRAGENT/pkg/jwt"
+	"goRAGENT/pkg/llm"
+	"goRAGENT/pkg/logx"
+	"goRAGENT/internal/handler/chat"
+	"goRAGENT/pkg/milvus"
+	"goRAGENT/pkg/mineru"
+	"goRAGENT/pkg/prompt"
+	"goRAGENT/pkg/rerank"
+	"goRAGENT/pkg/snowflake"
 )
 
 func loadDotEnv(path string) {
@@ -81,54 +76,54 @@ func main() {
 
 	llmSvc := llm.NewChatService(cfg)
 	prompts := prompt.NewTemplateLoader()
-	memSvc := memory.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
+	memSvc := rag.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
 
 	embedSvc := embedding.NewService(cfg.Embedding.HTTPURL)
 	rerankSvc := rerank.NewService(cfg.Reranker.HTTPURL, cfg.RAG.RerankTopK)
 
 	// M4: MinerU + 入库引擎
 	mineruClient := mineru.NewClient(cfg.Mineru.APIToken)
-	var mvStore *vectorstore.MilvusStore
+	var mvStore *milvus.MilvusStore
 	var ingestionEngine *ingestion.Engine
 
-	var searchChannels []retrieve.SearchChannel
+	var searchChannels []model.SearchChannel
 	var err error
-	if mvStore, err = vectorstore.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
+	if mvStore, err = milvus.NewMilvusStore(cfg.Milvus.URI(), embedSvc); err == nil {
 		searchChannels = append(searchChannels,
-			retrieve.NewIntentDirectedChannel(cfg.RAG.Search.Channels.IntentDirected, mvStore),
-			retrieve.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
+			rag.NewIntentDirectedChannel(cfg.RAG.Search.Channels.IntentDirected, mvStore),
+			rag.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
 		)
 		ingestionEngine = ingestion.NewEngine(db, mineruClient, embedSvc, mvStore, cfg.Ingestion)
 
 		// M5: You.com 联网检索（最低优先级兜底）
 		if cfg.RAG.Search.Channels.WebSearch.Enabled && cfg.RAG.Search.Channels.WebSearch.APIKey != "" {
 			searchChannels = append(searchChannels,
-				retrieve.NewYouComWebSearchChannel(cfg.RAG.Search.Channels.WebSearch),
+				rag.NewYouComWebSearchChannel(cfg.RAG.Search.Channels.WebSearch),
 			)
 		}
 	}
-	postProcessors := []retrieve.PostProcessor{
-		postprocessor.NewMetadataEnrichmentPostProcessor(db),
-		&retrieve.DedupPostProcessor{},
-		&retrieve.FusionPostProcessor{RRFK: 60, RerankCandidateLimit: 50},
-		retrieve.NewRerankPostProcessor(retrieve.RerankerAdapter(rerankSvc), cfg.RAG.RerankEnabled),
+	postProcessors := []rag.PostProcessor{
+		rag.NewMetadataEnrichmentPostProcessor(db),
+		&rag.DedupPostProcessor{},
+		&rag.FusionPostProcessor{RRFK: 60, RerankCandidateLimit: 50},
+		rag.NewRerankPostProcessor(rag.RerankerAdapter(rerankSvc), cfg.RAG.RerankEnabled),
 	}
-	multiChannelEngine := retrieve.NewMultiChannelEngine(searchChannels, postProcessors)
-	retrievalEngine := retrieve.NewRetrievalEngine(cfg.RAG, multiChannelEngine, prompts)
+	multiChannelEngine := rag.NewMultiChannelEngine(searchChannels, postProcessors)
+	retrievalEngine := rag.NewRetrievalEngine(cfg.RAG, multiChannelEngine, prompts)
 
 	// 意图树: Loader(Redis→MySQL) → Classifier(LLM) → Resolver
-	intentLoader := intent.NewTreeLoader(db, rdb)
-	intentClassifier := intent.NewClassifier(intentLoader, llmSvc, prompts)
-	intentResolver := intent.NewResolver(intentClassifier)
+	intentLoader := rag.NewTreeLoader(db, rdb)
+	intentClassifier := rag.NewClassifier(intentLoader, llmSvc, prompts)
+	intentResolver := rag.NewResolver(intentClassifier)
 
 	// 查询改写: 同义词归一化(Redis→MySQL) → LLM 改写+子问题拆分
-	mappingLoader := rewrite.NewMappingLoader(db, rdb)
-	queryRewriter := rewrite.NewRewriter(mappingLoader, llmSvc, prompts, cfg.RAG.QueryRewrite)
+	mappingLoader := rag.NewMappingLoader(db, rdb)
+	queryRewriter := rag.NewRewriter(mappingLoader, llmSvc, prompts, cfg.RAG.QueryRewrite)
 
 	// 歧义引导: 分数比值 + LLM 二次确认 → 选项话术短路
-	guidanceDetector := guidance.NewDetector(cfg.Guidance, llmSvc, prompts)
+	guidanceDetector := rag.NewDetector(cfg.Guidance, llmSvc, prompts)
 
-	ragPipeline := pipeline.NewSimplePipeline(cfg, memSvc, llmSvc, prompts, retrievalEngine, queryRewriter, intentResolver, guidanceDetector)
+	ragPipeline := rag.NewSimplePipeline(cfg, memSvc, llmSvc, prompts, retrievalEngine, queryRewriter, intentResolver, guidanceDetector)
 
 	// M5: MCP 工具执行器
 	if len(cfg.Mcp.Servers) > 0 {
@@ -140,7 +135,7 @@ func main() {
 		zap.L().Info("MCP 已启用", zap.Int("servers", len(cfg.Mcp.Servers)))
 	}
 
-	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline, db)
+	chatHandler := chat.NewSimpleChatHandler(cfg, ragPipeline, db)
 
 	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
 	adminH := admin.NewHandler(db).
@@ -151,9 +146,9 @@ func main() {
 		SetDataDir(cfg.Mineru.DataDir)
 
 	// M6: 分布式限流
-	var chatLimiter *ratelimit.Limiter
+	var chatLimiter *middleware.Limiter
 	if rdb != nil {
-		chatLimiter = ratelimit.NewLimiter(rdb, ratelimit.Config{
+		chatLimiter = middleware.NewLimiter(rdb, middleware.Config{
 			Enabled:        true,
 			MaxConcurrent:  10,
 			MaxWaitSeconds: 15,
@@ -171,7 +166,7 @@ func main() {
 	api.GET("/health", HealthHandler(cfg))
 
 	// 认证（无需 JWT）
-	authH := user.NewHandler(db, cfg)
+	authH := auth.NewHandler(db, cfg)
 	authH.AuthRoutes(api.Group("/auth"))
 api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) })
 
@@ -203,7 +198,7 @@ api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code":"0"}) }
 	sessH.RegisterRoutes(sessionGroup)
 
 	// 用户信息（JWT）
-	api.GET("/user/me", jwt.Middleware(cfg.SaToken.TokenName), user.CurrentUser(db, cfg))
+	api.GET("/user/me", jwt.Middleware(cfg.SaToken.TokenName), auth.CurrentUser(db, cfg))
 
 	// 前台管理接口（不带 /admin 前缀, 避免路由冲突, 仅加知识库/意图树/模型/设置/trace）
 	api.GET("/knowledge-base", adminH.ListKnowledgeBases)
