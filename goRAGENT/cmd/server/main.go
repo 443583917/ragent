@@ -31,6 +31,7 @@ import (
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/guidance"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/intent"
+	"github.com/nageoffer/ragent/goRAGENT/internal/rag/mcp"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/memory"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/pipeline"
 	"github.com/nageoffer/ragent/goRAGENT/internal/rag/prompt"
@@ -97,6 +98,13 @@ func main() {
 			retrieve.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
 		)
 		ingestionEngine = ingestion.NewEngine(db, mineruClient, embedSvc, mvStore, cfg.Ingestion)
+
+		// M5: You.com 联网检索（最低优先级兜底）
+		if cfg.RAG.Search.Channels.WebSearch.Enabled && cfg.RAG.Search.Channels.WebSearch.APIKey != "" {
+			searchChannels = append(searchChannels,
+				retrieve.NewYouComWebSearchChannel(cfg.RAG.Search.Channels.WebSearch),
+			)
+		}
 	}
 	postProcessors := []retrieve.PostProcessor{
 		postprocessor.NewMetadataEnrichmentPostProcessor(db),
@@ -120,6 +128,17 @@ func main() {
 	guidanceDetector := guidance.NewDetector(cfg.Guidance, llmSvc, prompts)
 
 	ragPipeline := pipeline.NewSimplePipeline(cfg, memSvc, llmSvc, prompts, retrievalEngine, queryRewriter, intentResolver, guidanceDetector)
+
+	// M5: MCP 工具执行器
+	if len(cfg.Mcp.Servers) > 0 {
+		mcpRegistry := mcp.NewRegistry(cfg.Mcp.Servers)
+		mcpExtractor := mcp.NewExtractor(llmSvc, prompts)
+		mcpFormatter := mcp.NewFormatter()
+		mcpExecutor := mcp.NewExecutor(mcpRegistry, mcpExtractor, mcpFormatter)
+		ragPipeline.SetMcpExecutor(mcpExecutor, mcpFormatter)
+		zap.L().Info("MCP 已启用", zap.Int("servers", len(cfg.Mcp.Servers)))
+	}
+
 	chatHandler := pipeline.NewSimpleChatHandler(cfg, ragPipeline)
 
 	// 管理后台共享 handler（意图/映射变更后清 Redis 缓存）
