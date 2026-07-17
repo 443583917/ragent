@@ -82,7 +82,7 @@ func (s *chunkService) Update(ctx context.Context, id string, req model.ChunkUpd
 func (s *chunkService) Toggle(ctx context.Context, id string) (int, error) {
 	do, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return 0, errs.NotFound("Chunk 不存在")
+		return 0, errs.Business("Chunk 不存在")
 	}
 	newEnabled := 0
 	if do.Enabled == 0 {

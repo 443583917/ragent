@@ -102,7 +102,7 @@ func (s *knowledgeBaseService) Update(ctx context.Context, id string, req model.
 func (s *knowledgeBaseService) Delete(ctx context.Context, id string) error {
 	do, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return errs.NotFound("知识库不存在")
+		return errs.Business("知识库不存在")
 	}
 
 	if s.vectorStore != nil && do.CollectionName != "" {

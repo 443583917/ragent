@@ -165,7 +165,7 @@ func (s *documentService) Upload(ctx context.Context, kbID, fileName string, rea
 func (s *documentService) Preview(ctx context.Context, docID string) (string, string, error) {
 	do, err := s.docRepo.FindByID(ctx, docID)
 	if err != nil {
-		return "", "", errs.NotFound("文档不存在")
+		return "", "", errs.Business("文档不存在")
 	}
 
 	parsedPath := filepath.Join(s.dataDir, "parsed", do.ID+".md")
@@ -186,7 +186,7 @@ func (s *documentService) Preview(ctx context.Context, docID string) (string, st
 func (s *documentService) Download(ctx context.Context, docID string) (string, string, error) {
 	do, err := s.docRepo.FindByID(ctx, docID)
 	if err != nil {
-		return "", "", errs.NotFound("文档不存在")
+		return "", "", errs.Business("文档不存在")
 	}
 
 	ext := filepath.Ext(do.FileName)
@@ -201,7 +201,7 @@ func (s *documentService) Download(ctx context.Context, docID string) (string, s
 func (s *documentService) Delete(ctx context.Context, id string) error {
 	do, err := s.docRepo.FindByID(ctx, id)
 	if err != nil {
-		return errs.NotFound("文档不存在")
+		return errs.Business("文档不存在")
 	}
 
 	// 先软删文档（确保文档存在才往下走）
