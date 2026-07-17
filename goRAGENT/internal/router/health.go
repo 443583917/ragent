@@ -1,21 +1,82 @@
 package router
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+
 	"goRAGENT/internal/config"
 )
 
-// HealthHandler 返回基础健康检查结果。
-func HealthHandler(cfg *config.Config) gin.HandlerFunc {
+// healthStatus 运行时健康状态（bootstrap 探活后注入）。
+type healthStatus struct {
+	db      *gorm.DB
+	rdb     *redis.Client
+	milvusURI string
+}
+
+// HealthHandler 返回运行时健康检查（实际探测 DB/Redis/Milvus）。
+func HealthHandler(hs healthStatus) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		s := map[string]string{"db": "OK", "redis": "OK", "milvus": "NOT_CONFIGURED"}
+		s := map[string]string{"db": "OK", "redis": "OK", "milvus": "OK"}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		if hs.db != nil {
+			if sqlDB, err := hs.db.DB(); err == nil {
+				if err := sqlDB.PingContext(ctx); err != nil {
+					s["db"] = "DOWN"
+				}
+			} else {
+				s["db"] = "DOWN"
+			}
+		} else {
+			s["db"] = "NOT_CONFIGURED"
+		}
+
+		if hs.rdb != nil {
+			if err := hs.rdb.Ping(ctx).Err(); err != nil {
+				s["redis"] = "DOWN"
+			}
+		} else {
+			s["redis"] = "NOT_CONFIGURED"
+		}
+
+		if hs.milvusURI != "" {
+			origCtx, origCancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+			defer origCancel()
+			if err := probeMilvusQuick(origCtx, hs.milvusURI); err != nil {
+				s["milvus"] = "DOWN"
+			}
+		} else {
+			s["milvus"] = "NOT_CONFIGURED"
+		}
+
 		c.JSON(http.StatusOK, gin.H{"code": "0", "data": s})
 	}
 }
 
-// SettingsHandler 返回前端运行配置（全部从 cfg 读取，不写死）。
+// probeMilvusQuick 快速 Milvus 连通性检查（无 SDK 创建 client 开销的简化版）。
+func probeMilvusQuick(ctx context.Context, uri string) error {
+	// 直接用 HTTP HEAD 检查 Milvus RESTful API
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri+"/api/v1/health", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// SettingsHandler 返回前端运行配置（全部从 cfg 读取）。
 func SettingsHandler(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		providers := gin.H{}

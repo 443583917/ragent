@@ -2,6 +2,8 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 
 	"goRAGENT/internal/config"
 	"goRAGENT/internal/handler/admin"
@@ -16,6 +18,8 @@ import (
 // Deps 路由层依赖（由 bootstrap 装配后传入）。
 type Deps struct {
 	Cfg            *config.Config
+	DB             *gorm.DB      // 健康检查专用
+	RDB            *redis.Client // 健康检查专用
 	AdminH         *admin.Handler
 	ChatHandler    *chat.ChatHandler
 	ChatLimiter    *middleware.Limiter
@@ -35,7 +39,8 @@ func Register(r *gin.Engine, d Deps) {
 
 // registerHealth 健康检查（无需 JWT）。
 func registerHealth(api *gin.RouterGroup, d Deps) {
-	api.GET("/health", HealthHandler(d.Cfg))
+	hs := healthStatus{db: d.DB, rdb: d.RDB, milvusURI: d.Cfg.Milvus.URI()}
+	api.GET("/health", HealthHandler(hs))
 }
 
 // registerAuth 认证（无需 JWT）。

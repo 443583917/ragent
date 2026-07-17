@@ -41,6 +41,8 @@ import (
 // App 持有全部装配后的依赖，提供 Run() 启动 HTTP 服务。
 type App struct {
 	cfg            *config.Config
+	db             *gorm.DB
+	rdb            *redis.Client
 	adminH         *admin.Handler
 	chatHandler    *chat.ChatHandler
 	chatLimiter    *middleware.Limiter
@@ -61,7 +63,8 @@ func New(cfg *config.Config) (*App, error) {
 	probeRedis(rdb)
 	probeMilvus(cfg.Milvus.URI())
 	go probeEmbedding(cfg.Embedding.HTTPURL)
-	go probeLLM(cfg.LLM.PrimaryProvider(), "", "", "")
+	pm := cfg.LLM.Resolve(cfg.LLM.PrimaryProvider())
+	go probeLLM(cfg.LLM.PrimaryProvider(), pm.Model, pm.BaseURL, pm.Key)
 
 	// ====== 依赖装配 ======
 	repos := mysqlrepo.New(db)
@@ -143,7 +146,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	app := &App{
-		cfg:            cfg,
+		cfg:            cfg, db: db, rdb: rdb,
 		authSvc:        authSvc,
 		adminH:         adminH,
 		chatHandler:    chatHandler,
@@ -159,7 +162,8 @@ func (a *App) Run() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	router.Register(r, router.Deps{
-		Cfg: a.cfg, AdminH: a.adminH, ChatHandler: a.chatHandler, ChatLimiter: a.chatLimiter,
+		Cfg: a.cfg, DB: a.db, RDB: a.rdb,
+		AdminH: a.adminH, ChatHandler: a.chatHandler, ChatLimiter: a.chatLimiter,
 		AuthSvc: a.authSvc, SessionHandler: a.sessionHandler,
 	})
 
