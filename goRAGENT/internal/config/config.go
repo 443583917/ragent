@@ -381,10 +381,3 @@ func Load() *Config {
 
 func Get() *Config { return global }
 
-// ========== 全局持有 ==========
-var globalDB, globalRedis any // *gorm.DB / *redis.Client
-
-func SetDBGorm(db any)       { globalDB = db }
-func SetRedisClient(r any)   { globalRedis = r }
-func GetDB() any             { return globalDB }
-func GetRedis() any          { return globalRedis }

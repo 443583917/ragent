@@ -1,17 +1,16 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
-	"gorm.io/driver/postgres"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
-// runMigrations 执行数据库迁移
+// runMigrations 执行数据库迁移。
 func runMigrations(dsn string) error {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
@@ -21,7 +20,10 @@ func runMigrations(dsn string) error {
 		return fmt.Errorf("读取迁移文件失败: %w", err)
 	}
 
-	sqlDB, _ := db.DB()
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("获取数据库连接失败: %w", err)
+	}
 	defer sqlDB.Close()
 
 	if err := db.Exec(string(sql)).Error; err != nil {
@@ -32,9 +34,12 @@ func runMigrations(dsn string) error {
 	return nil
 }
 
-// HasMigrateFlag 检查是否传了 --migrate 参数
+// HasMigrateFlag 检查是否传了 --migrate 参数（避免 flag 全局污染）。
 func HasMigrateFlag() bool {
-	migrate := flag.Bool("migrate", false, "Run database migrations")
-	flag.Parse()
-	return *migrate
+	for _, arg := range os.Args {
+		if arg == "--migrate" {
+			return true
+		}
+	}
+	return false
 }

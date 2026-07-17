@@ -13,7 +13,7 @@ import (
 	"goRAGENT/pkg/jwt"
 )
 
-// Deps 路由层依赖（由 main 装配后传入）
+// Deps 路由层依赖（由 bootstrap 装配后传入）。
 type Deps struct {
 	Cfg            *config.Config
 	AdminH         *admin.Handler
@@ -23,39 +23,49 @@ type Deps struct {
 	SessionHandler *session.Handler
 }
 
-// Register 注册全部路由到 gin.Engine
+// Register 注册全部路由到 gin.Engine。
 func Register(r *gin.Engine, d Deps) {
 	api := r.Group("/api/ragent")
-	api.GET("/health", HealthHandler(d.Cfg))
+	registerHealth(api, d)
+	registerAuth(api, d)
+	registerChat(api, d)
+	registerSession(api, d)
+	registerAdmin(api, d)
+}
 
-	// 认证（无需 JWT）
+// registerHealth 健康检查（无需 JWT）。
+func registerHealth(api *gin.RouterGroup, d Deps) {
+	api.GET("/health", HealthHandler(d.Cfg))
+}
+
+// registerAuth 认证（无需 JWT）。
+func registerAuth(api *gin.RouterGroup, d Deps) {
 	authH := auth.NewHandler(d.AuthSvc)
 	authH.AuthRoutes(api.Group("/auth"))
 	api.POST("/auth/logout", func(c *gin.Context) { c.JSON(200, gin.H{"code": "0"}) })
+	api.GET("/user/me", jwt.Middleware(d.Cfg.SaToken.TokenName), authH.CurrentUser)
+}
 
-	// 示例问题（无需 JWT）
+// registerChat RAG 对话（JWT + 限流）。
+func registerChat(api *gin.RouterGroup, d Deps) {
 	api.GET("/rag/sample-questions", d.AdminH.GetSampleQuestionsPublic)
 
-	// RAG 对话（JWT + 限流）
 	ragV3 := api.Group("/rag/v3")
 	ragV3.Use(jwt.Middleware(d.Cfg.SaToken.TokenName))
 	ragV3.GET("/chat", d.chatRoute())
 	ragV3.POST("/stop", d.ChatHandler.StopTask)
+}
 
-	// 会话 + 消息 + 反馈（JWT）
+// registerSession 会话 + 消息 + 反馈（JWT）。
+func registerSession(api *gin.RouterGroup, d Deps) {
 	sessionGroup := api.Group("", jwt.Middleware(d.Cfg.SaToken.TokenName))
 	d.SessionHandler.RegisterRoutes(sessionGroup)
+}
 
-	// 用户信息（JWT）
-	api.GET("/user/me", jwt.Middleware(d.Cfg.SaToken.TokenName), authH.CurrentUser)
-
-	// 前台管理接口
+// registerAdmin 管理后台（前台 + 后台 + /admin 子路由）。
+func registerAdmin(api *gin.RouterGroup, d Deps) {
 	registerFrontendRoutes(api, d.AdminH)
-
-	// 管理后台
 	registerAdminRoutes(api, d.AdminH, d.Cfg)
-
-	// 管理后台子路由（/admin 前缀）
 	d.AdminH.RegisterRoutes(api.Group("/admin"))
 }
 
