@@ -1,139 +1,71 @@
 package admin
 
 import (
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
-	"goRAGENT/pkg/response"
-	"goRAGENT/pkg/snowflake"
+	"goRAGENT/internal/handler/httpx"
 	"goRAGENT/internal/model"
-	"go.uber.org/zap"
 )
 
-// sampleQuestionItemVO 匹配前端 SampleQuestion 类型
-type sampleQuestionItemVO = model.SampleQuestionItemVO
-type sampleQuestionPayload = model.SampleQuestionPayload
-
 func (h *Handler) listSampleQuestions(c *gin.Context) {
-	current, _ := strconv.Atoi(c.DefaultQuery("current", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
-	if current < 1 {
-		current = 1
-	}
-	if size < 1 {
-		size = 10
-	}
-	keyword := c.Query("keyword")
-
-	var dos []model.SampleQuestionDO
-	var total int64
-	query := h.db.WithContext(c.Request.Context()).Model(&model.SampleQuestionDO{}).Where("deleted = 0")
-	if keyword != "" {
-		query = query.Where("question LIKE ? OR title LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
-	}
-	query.Count(&total)
-	if err := query.Order("sort_order ASC").Offset((current - 1) * size).Limit(size).Find(&dos).Error; err != nil {
-		zap.L().Error("查询示例问题失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
+	pq := httpx.PageFromCurrentSize(c)
+	vos, total, err := h.svc.SampleQuestion.List(c.Request.Context(), pq, c.Query("keyword"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	vos := make([]sampleQuestionItemVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, model.SQDOToItem(d))
-	}
 	if vos == nil {
-		vos = []sampleQuestionItemVO{}
+		vos = []model.SampleQuestionItemVO{}
 	}
-	c.JSON(http.StatusOK, response.Success(model.NewPageResult(vos, total, model.PageQuery{Page: current, Size: size})))
+	httpx.OK(c, model.NewPageResult(vos, total, pq))
 }
 
 func (h *Handler) getSampleQuestionsPublic(c *gin.Context) {
-	var dos []model.SampleQuestionDO
-	h.db.WithContext(c.Request.Context()).
-		Where("deleted = 0 AND enabled = 1").Order("sort_order ASC").Limit(10).
-		Find(&dos)
-
-	vos := make([]sampleQuestionItemVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, model.SQDOToItem(d))
+	vos, err := h.svc.SampleQuestion.ListPublic(c.Request.Context())
+	if err != nil {
+		httpx.Error(c, err)
+		return
 	}
 	if vos == nil {
-		vos = []sampleQuestionItemVO{}
+		vos = []model.SampleQuestionItemVO{}
 	}
-	c.JSON(http.StatusOK, response.Success(vos))
+	httpx.OK(c, vos)
 }
 
 func (h *Handler) createSampleQuestion(c *gin.Context) {
-	var req sampleQuestionPayload
+	var req model.SampleQuestionPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "参数错误"))
+		httpx.BadRequest(c, "参数错误")
 		return
 	}
 	if req.Question == nil || *req.Question == "" {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "question 不能为空"))
+		httpx.BadRequest(c, "question 不能为空")
 		return
 	}
-
-	title := ""
-	if req.Title != nil {
-		title = *req.Title
-	}
-	desc := ""
-	if req.Description != nil {
-		desc = *req.Description
-	}
-
-	do := model.SampleQuestionDO{
-		ID: snowflake.NextID(), Title: title, Description: desc,
-		Question: *req.Question, SortOrder: 0, Enabled: 1,
-	}
-	if err := h.db.WithContext(c.Request.Context()).Create(&do).Error; err != nil {
-		zap.L().Error("创建示例问题失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "创建失败"))
+	id, err := h.svc.SampleQuestion.Create(c.Request.Context(), req)
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(do.ID))
+	httpx.OK(c, id)
 }
 
 func (h *Handler) updateSampleQuestion(c *gin.Context) {
-	var req sampleQuestionPayload
+	var req model.SampleQuestionPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "参数错误"))
+		httpx.BadRequest(c, "参数错误")
 		return
 	}
-	updates := map[string]any{}
-	if req.Title != nil {
-		updates["title"] = *req.Title
-	}
-	if req.Description != nil {
-		updates["description"] = *req.Description
-	}
-	if req.Question != nil {
-		updates["question"] = *req.Question
-	}
-	if len(updates) == 0 {
-		c.JSON(http.StatusOK, response.SuccessOK())
+	if err := h.svc.SampleQuestion.Update(c.Request.Context(), c.Param("id"), req); err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	if err := h.db.WithContext(c.Request.Context()).
-		Model(&model.SampleQuestionDO{}).Where("id = ?", c.Param("id")).
-		Updates(updates).Error; err != nil {
-		zap.L().Error("更新示例问题失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "更新失败"))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	httpx.OKEmpty(c)
 }
 
 func (h *Handler) deleteSampleQuestion(c *gin.Context) {
-	if err := h.db.WithContext(c.Request.Context()).
-		Model(&model.SampleQuestionDO{}).Where("id = ?", c.Param("id")).
-		Update("deleted", 1).Error; err != nil {
-		zap.L().Error("删除示例问题失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "删除失败"))
+	if err := h.svc.SampleQuestion.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	httpx.OKEmpty(c)
 }

@@ -68,7 +68,7 @@ func TestBuildIntentTreeVOs_MapsAllFields(t *testing.T) {
 // ========== 创建请求 → DO ==========
 
 func TestCreateReqToDO_SerializesExamplesAndDefaults(t *testing.T) {
-	req := intentNodeCreateReq{
+	req := model.IntentNodeCreateReq{
 		KbID: "kb-1", IntentCode: "group-hr", Name: "人事", Level: 1,
 		Examples: []string{"请假流程？", "转正时间？"},
 	}
@@ -90,7 +90,7 @@ func TestCreateReqToDO_SerializesExamplesAndDefaults(t *testing.T) {
 func TestCreateReqToDO_ExplicitValues(t *testing.T) {
 	kind, enabled, sortOrder, topK := 2, 0, 7, 6
 	mcp := "tool-x"
-	req := intentNodeCreateReq{
+	req := model.IntentNodeCreateReq{
 		IntentCode: "s", Name: "n", Kind: &kind, Enabled: &enabled,
 		SortOrder: &sortOrder, TopK: &topK, McpToolID: &mcp,
 	}
@@ -108,7 +108,7 @@ func TestCreateReqToDO_ExplicitValues(t *testing.T) {
 func TestUpdateReqToUpdates_OnlyProvidedFields(t *testing.T) {
 	name := "新名字"
 	enabled := 0
-	req := intentNodeUpdateReq{Name: &name, Enabled: &enabled}
+	req := model.IntentNodeUpdateReq{Name: &name, Enabled: &enabled}
 	updates := model.IntentUpdateReqToUpdates(req, "user-2")
 
 	if updates["name"] != "新名字" || updates["enabled"] != 0 {
@@ -125,7 +125,7 @@ func TestUpdateReqToUpdates_OnlyProvidedFields(t *testing.T) {
 }
 
 func TestUpdateReqToUpdates_ExamplesSerialized(t *testing.T) {
-	req := intentNodeUpdateReq{Examples: []string{"a", "b"}}
+	req := model.IntentNodeUpdateReq{Examples: []string{"a", "b"}}
 	updates := model.IntentUpdateReqToUpdates(req, "u")
 	if updates["examples"] != `["a","b"]` {
 		t.Errorf("examples 应序列化: %v", updates["examples"])

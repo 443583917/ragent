@@ -3,54 +3,21 @@ package admin
 import (
 	"github.com/gin-gonic/gin"
 	"goRAGENT/pkg/response"
-	"goRAGENT/internal/service/ingestion"
-	"goRAGENT/pkg/milvus"
-	"gorm.io/gorm"
+
+	svcadmin "goRAGENT/internal/service/admin"
 )
 
+// Handler 管理后台 handler（仅持有 service 聚合，不含业务逻辑）。
 type Handler struct {
-	db              *gorm.DB
-	intentCache     CacheClearer
-	mappingCache    CacheClearer
-	milvus          *milvus.MilvusStore
-	ingestionEngine *ingestion.Engine
-	dataDir         string
+	svc svcadmin.Services
 }
 
-func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
-
-// DB 暴露 DB 供 router 层使用
-func (h *Handler) DB() *gorm.DB { return h.db }
-
-// SetIntentCacheClearer 注入意图树缓存清除器（意图节点变更后清缓存）
-func (h *Handler) SetIntentCacheClearer(c CacheClearer) *Handler {
-	h.intentCache = c
-	return h
+// NewHandler 创建管理后台 handler。
+func NewHandler(svc svcadmin.Services) *Handler {
+	return &Handler{svc: svc}
 }
 
-// SetMappingCacheClearer 注入同义词映射缓存清除器（映射变更后清缓存）
-func (h *Handler) SetMappingCacheClearer(c CacheClearer) *Handler {
-	h.mappingCache = c
-	return h
-}
-
-// SetMilvusStore 注入 Milvus Store
-func (h *Handler) SetMilvusStore(m *milvus.MilvusStore) *Handler {
-	h.milvus = m
-	return h
-}
-
-// SetIngestionEngine 注入入库引擎
-func (h *Handler) SetIngestionEngine(e *ingestion.Engine) *Handler {
-	h.ingestionEngine = e
-	return h
-}
-
-// SetDataDir 设置文件管理目录
-func (h *Handler) SetDataDir(d string) *Handler {
-	h.dataDir = d
-	return h
-}
+// ========== 路由表 ==========
 
 // 关键词映射 CRUD（对齐 Java QueryTermMappingController）
 func (h *Handler) ListMappings(c *gin.Context)  { h.listMappings(c) }
@@ -137,16 +104,16 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // dummy handlers
-func ok(c *gin.Context)                { c.JSON(200, response.Success(gin.H{})) }
-func okArr(c *gin.Context)             { c.JSON(200, response.Success([]gin.H{})) }
-func okID(c *gin.Context)              { c.JSON(200, response.Success(gin.H{"id": "1"})) }
-func okEmpty(c *gin.Context)           { c.JSON(200, response.SuccessOK()) }
+func ok(c *gin.Context)      { c.JSON(200, response.Success(gin.H{})) }
+func okArr(c *gin.Context)   { c.JSON(200, response.Success([]gin.H{})) }
+func okID(c *gin.Context)    { c.JSON(200, response.Success(gin.H{"id": "1"})) }
+func okEmpty(c *gin.Context) { c.JSON(200, response.SuccessOK()) }
 
 // Dashboard — real
 func (h *Handler) DashboardStats(c *gin.Context)       { h.dashboardStatsReal(c) }
-func (h *Handler) DashboardOverview(c *gin.Context)     { h.dashboardOverviewReal(c) }
-func (h *Handler) DashboardPerformance(c *gin.Context)  { h.dashboardPerformanceReal(c) }
-func (h *Handler) DashboardTrends(c *gin.Context)       { h.dashboardTrendsReal(c) }
+func (h *Handler) DashboardOverview(c *gin.Context)    { h.dashboardOverviewReal(c) }
+func (h *Handler) DashboardPerformance(c *gin.Context) { h.dashboardPerformanceReal(c) }
+func (h *Handler) DashboardTrends(c *gin.Context)      { h.dashboardTrendsReal(c) }
 
 // Knowledge base — real
 func (h *Handler) ListKnowledgeBases(c *gin.Context)  { h.listKnowledgeBases(c) }
@@ -156,14 +123,14 @@ func (h *Handler) UpdateKnowledgeBase(c *gin.Context) { h.updateKnowledgeBase(c)
 func (h *Handler) DeleteKnowledgeBase(c *gin.Context) { h.deleteKnowledgeBase(c) }
 
 // Documents — real
-func (h *Handler) ListDocuments(c *gin.Context)      { h.listDocuments(c) }
-func (h *Handler) UploadDocument(c *gin.Context)      { h.uploadDocument(c) }
-func (h *Handler) SearchDocuments(c *gin.Context)     { h.searchDocuments(c) }
-func (h *Handler) GetDocument(c *gin.Context)         { h.getDocument(c) }
-func (h *Handler) PreviewDocument(c *gin.Context)     { h.previewDocument(c) }
-func (h *Handler) DownloadDocument(c *gin.Context)    { h.downloadDocument(c) }
-func (h *Handler) DeleteDocument(c *gin.Context)      { h.deleteDocument(c) }
-func (h *Handler) ToggleDocument(c *gin.Context)      { h.toggleDocument(c) }
+func (h *Handler) ListDocuments(c *gin.Context)    { h.listDocuments(c) }
+func (h *Handler) UploadDocument(c *gin.Context)   { h.uploadDocument(c) }
+func (h *Handler) SearchDocuments(c *gin.Context)  { h.searchDocuments(c) }
+func (h *Handler) GetDocument(c *gin.Context)      { h.getDocument(c) }
+func (h *Handler) PreviewDocument(c *gin.Context)  { h.previewDocument(c) }
+func (h *Handler) DownloadDocument(c *gin.Context) { h.downloadDocument(c) }
+func (h *Handler) DeleteDocument(c *gin.Context)   { h.deleteDocument(c) }
+func (h *Handler) ToggleDocument(c *gin.Context)   { h.toggleDocument(c) }
 
 // Chunks — real
 func (h *Handler) ListChunksByKB(c *gin.Context) { h.listChunksByKB(c) }
@@ -180,19 +147,25 @@ func (h *Handler) GetIngestionTaskNodes(c *gin.Context) { h.getIngestionTaskNode
 // Still dummy
 func (h *Handler) ListChunkStrategies(c *gin.Context) { okArr(c) }
 func (h *Handler) CreateChunk(c *gin.Context)         { okID(c) }
-func (h *Handler) ListDatasets(c *gin.Context)         { okArr(c) }
-func (h *Handler) GetIntentTree(c *gin.Context)        { h.intentTrees(c) }
-func (h *Handler) CreateIntentNode(c *gin.Context)     { h.createIntentNode(c) }
-func (h *Handler) UpdateIntentNode(c *gin.Context)     { h.updateIntentNode(c) }
-func (h *Handler) DeleteIntentNode(c *gin.Context)     { h.deleteIntentNode(c) }
-func (h *Handler) GetIntentTrees(c *gin.Context)       { h.intentTrees(c) }
-func (h *Handler) BatchEnableIntent(c *gin.Context)    { h.batchUpdateIntent(c, map[string]any{"enabled": 1}) }
-func (h *Handler) BatchDisableIntent(c *gin.Context)   { h.batchUpdateIntent(c, map[string]any{"enabled": 0}) }
-func (h *Handler) BatchDeleteIntent(c *gin.Context)    { h.batchUpdateIntent(c, map[string]any{"deleted": 1}) }
-func (h *Handler) ListModels(c *gin.Context)           { okArr(c) }
-func (h *Handler) UpdateModel(c *gin.Context)          { okEmpty(c) }
-func (h *Handler) GetSettings(c *gin.Context)          { ok(c) }
-func (h *Handler) UpdateSettings(c *gin.Context)       { okEmpty(c) }
+func (h *Handler) ListDatasets(c *gin.Context)        { okArr(c) }
+func (h *Handler) GetIntentTree(c *gin.Context)       { h.intentTrees(c) }
+func (h *Handler) CreateIntentNode(c *gin.Context)    { h.createIntentNode(c) }
+func (h *Handler) UpdateIntentNode(c *gin.Context)    { h.updateIntentNode(c) }
+func (h *Handler) DeleteIntentNode(c *gin.Context)    { h.deleteIntentNode(c) }
+func (h *Handler) GetIntentTrees(c *gin.Context)      { h.intentTrees(c) }
+func (h *Handler) BatchEnableIntent(c *gin.Context) {
+	h.batchUpdateIntent(c, map[string]any{"enabled": 1})
+}
+func (h *Handler) BatchDisableIntent(c *gin.Context) {
+	h.batchUpdateIntent(c, map[string]any{"enabled": 0})
+}
+func (h *Handler) BatchDeleteIntent(c *gin.Context) {
+	h.batchUpdateIntent(c, map[string]any{"deleted": 1})
+}
+func (h *Handler) ListModels(c *gin.Context)     { okArr(c) }
+func (h *Handler) UpdateModel(c *gin.Context)    { okEmpty(c) }
+func (h *Handler) GetSettings(c *gin.Context)    { ok(c) }
+func (h *Handler) UpdateSettings(c *gin.Context) { okEmpty(c) }
 
 // Users — real
 func (h *Handler) ListUsers(c *gin.Context) { h.listUsersReal(c) }
@@ -213,7 +186,7 @@ func (h *Handler) DeleteSampleQuestion(c *gin.Context)     { h.deleteSampleQuest
 func (h *Handler) GetSampleQuestionsPublic(c *gin.Context) { h.getSampleQuestionsPublic(c) }
 
 // User mgmt — real
-func (h *Handler) CreateUser(c *gin.Context)        { h.createUser(c) }
-func (h *Handler) UpdateUser(c *gin.Context)        { h.updateUser(c) }
-func (h *Handler) DeleteUser(c *gin.Context)        { h.deleteUser(c) }
+func (h *Handler) CreateUser(c *gin.Context)         { h.createUser(c) }
+func (h *Handler) UpdateUser(c *gin.Context)         { h.updateUser(c) }
+func (h *Handler) DeleteUser(c *gin.Context)         { h.deleteUser(c) }
 func (h *Handler) ChangeUserPassword(c *gin.Context) { h.changePassword(c) }

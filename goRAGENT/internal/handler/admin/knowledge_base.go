@@ -1,132 +1,61 @@
 package admin
 
 import (
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
-	"goRAGENT/pkg/response"
-	"goRAGENT/pkg/snowflake"
+	"goRAGENT/internal/handler/httpx"
 	"goRAGENT/internal/model"
-	"go.uber.org/zap"
 )
 
-type knowledgeBaseVO = model.KnowledgeBaseVO
-type knowledgeBaseCreateReq = model.KnowledgeBaseCreateReq
-type knowledgeBaseUpdateReq = model.KnowledgeBaseUpdateReq
-
 func (h *Handler) listKnowledgeBases(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-
-	var dos []model.KnowledgeBaseDO
-	var total int64
-	h.db.WithContext(c.Request.Context()).Model(&model.KnowledgeBaseDO{}).Where("deleted = 0").Count(&total)
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("deleted = 0").Order("create_time DESC").Offset((page-1)*pageSize).Limit(pageSize).
-		Find(&dos).Error; err != nil {
-		zap.L().Error("查询知识库列表失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
+	pq := httpx.PageFromQuery(c)
+	vos, total, err := h.svc.KnowledgeBase.List(c.Request.Context(), pq)
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	vos := make([]knowledgeBaseVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, model.KnowledgeBaseDOToVO(d))
-	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
+	httpx.OK(c, gin.H{"total": total, "rows": vos})
 }
 
 func (h *Handler) createKnowledgeBase(c *gin.Context) {
-	var req knowledgeBaseCreateReq
+	var req model.KnowledgeBaseCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "name 不能为空"))
+		httpx.BadRequest(c, "name 不能为空")
 		return
 	}
-
-	id := snowflake.NextID()
-	collectionName := "kb_" + id
-
-	if h.milvus != nil {
-		if err := h.milvus.CreateCollection(c.Request.Context(), collectionName, 1536); err != nil {
-			zap.L().Error("创建 Milvus Collection 失败", zap.Error(err))
-			c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "创建向量集合失败"))
-			return
-		}
-	}
-
-	do := model.KnowledgeBaseDO{
-		ID: id, Name: req.Name, Description: req.Description,
-		CollectionName: collectionName, Dimension: 1536,
-	}
-	if err := h.db.WithContext(c.Request.Context()).Create(&do).Error; err != nil {
-		zap.L().Error("创建知识库失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "创建失败"))
+	vo, err := h.svc.KnowledgeBase.Create(c.Request.Context(), req)
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(model.KnowledgeBaseDOToVO(do)))
+	httpx.OK(c, vo)
 }
 
 func (h *Handler) getKnowledgeBase(c *gin.Context) {
-	var do model.KnowledgeBaseDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("id = ? AND deleted = 0", c.Param("id")).First(&do).Error; err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "知识库不存在"))
+	vo, err := h.svc.KnowledgeBase.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(model.KnowledgeBaseDOToVO(do)))
+	httpx.OK(c, vo)
 }
 
 func (h *Handler) updateKnowledgeBase(c *gin.Context) {
-	var req knowledgeBaseUpdateReq
+	var req model.KnowledgeBaseUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "参数错误"))
+		httpx.BadRequest(c, "参数错误")
 		return
 	}
-
-	updates := map[string]any{}
-	if req.Name != nil {
-		updates["name"] = *req.Name
-	}
-	if req.Description != nil {
-		updates["description"] = *req.Description
-	}
-	if len(updates) == 0 {
-		c.JSON(http.StatusOK, response.SuccessOK())
+	if err := h.svc.KnowledgeBase.Update(c.Request.Context(), c.Param("id"), req); err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	if err := h.db.WithContext(c.Request.Context()).
-		Model(&model.KnowledgeBaseDO{}).
-		Where("id = ? AND deleted = 0", c.Param("id")).
-		Updates(updates).Error; err != nil {
-		zap.L().Error("更新知识库失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "更新失败"))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	httpx.OKEmpty(c)
 }
 
 func (h *Handler) deleteKnowledgeBase(c *gin.Context) {
-	id := c.Param("id")
-
-	var do model.KnowledgeBaseDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("id = ? AND deleted = 0", id).First(&do).Error; err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "知识库不存在"))
+	if err := h.svc.KnowledgeBase.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	if h.milvus != nil && do.CollectionName != "" {
-		h.milvus.DropCollection(c.Request.Context(), do.CollectionName)
-	}
-
-	if err := h.db.WithContext(c.Request.Context()).
-		Model(&model.KnowledgeBaseDO{}).Where("id = ?", id).
-		Update("deleted", 1).Error; err != nil {
-		zap.L().Error("删除知识库失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "删除失败"))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	httpx.OKEmpty(c)
 }

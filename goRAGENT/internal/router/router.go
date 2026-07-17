@@ -2,6 +2,8 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"goRAGENT/internal/config"
 	"goRAGENT/internal/handler/admin"
 	"goRAGENT/internal/handler/auth"
@@ -19,6 +21,7 @@ type Deps struct {
 	ChatHandler *chat.ChatHandler
 	ChatLimiter *middleware.Limiter
 	AuthSvc     authsvc.AuthService
+	SessionDB   *gorm.DB // TODO(Task 6): 移除，session handler 改为 service 注入
 }
 
 // Register 注册全部路由到 gin.Engine
@@ -41,7 +44,7 @@ func Register(r *gin.Engine, d Deps) {
 	ragV3.POST("/stop", d.ChatHandler.StopTask)
 
 	// 会话 + 消息 + 反馈（JWT）
-	sessH := rag.NewSessionHandler(d.AdminH.DB(), d.Cfg)
+	sessH := rag.NewSessionHandler(d.SessionDB, d.Cfg)
 	sessionGroup := api.Group("", jwt.Middleware(d.Cfg.SaToken.TokenName))
 	sessH.RegisterRoutes(sessionGroup)
 

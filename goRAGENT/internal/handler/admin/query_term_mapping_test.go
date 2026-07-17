@@ -31,7 +31,7 @@ func TestMappingToVO_EnabledIntToBool(t *testing.T) {
 }
 
 func TestMappingCreateReqToDO_Defaults(t *testing.T) {
-	req := mappingCreateReq{SourceTerm: "保司", TargetTerm: "保险公司"}
+	req := model.MappingCreateReq{SourceTerm: "保司", TargetTerm: "保险公司"}
 	do := model.MappingCreateReqToDO(req, "id-1", "user-1")
 	if do.ID != "id-1" || do.CreateBy != "user-1" {
 		t.Errorf("基础字段错误: %+v", do)
@@ -50,7 +50,7 @@ func TestMappingCreateReqToDO_Defaults(t *testing.T) {
 func TestMappingCreateReqToDO_ExplicitValues(t *testing.T) {
 	mt, pri, enabled := 2, 50, false
 	remark := "r"
-	req := mappingCreateReq{
+	req := model.MappingCreateReq{
 		SourceTerm: "a", TargetTerm: "b",
 		MatchType: &mt, Priority: &pri, Enabled: &enabled, Remark: &remark,
 	}
@@ -63,7 +63,7 @@ func TestMappingCreateReqToDO_ExplicitValues(t *testing.T) {
 func TestMappingUpdateReqToUpdates_OnlyProvided(t *testing.T) {
 	enabled := false
 	target := "新目标"
-	req := mappingUpdateReq{TargetTerm: &target, Enabled: &enabled}
+	req := model.MappingUpdateReq{TargetTerm: &target, Enabled: &enabled}
 	updates := model.MappingUpdateReqToUpdates(req, "user-2")
 	if updates["target_term"] != "新目标" || updates["enabled"] != 0 {
 		t.Errorf("提供字段应进 updates（enabled bool→int）: %+v", updates)
@@ -77,4 +77,3 @@ func TestMappingUpdateReqToUpdates_OnlyProvided(t *testing.T) {
 		}
 	}
 }
-

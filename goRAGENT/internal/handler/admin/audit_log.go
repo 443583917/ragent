@@ -1,69 +1,25 @@
 package admin
 
 import (
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
-	"goRAGENT/pkg/response"
-	"goRAGENT/internal/model"
-	"go.uber.org/zap"
+	"goRAGENT/internal/handler/httpx"
 )
 
-type bizChangeLogVO = model.BizChangeLogVO
-
 func (h *Handler) listBizChangeLogs(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	entityType := c.Query("entityType")
-
-	var dos []model.BizChangeLogDO
-	var total int64
-	query := h.db.WithContext(c.Request.Context()).Model(&model.BizChangeLogDO{})
-	if entityType != "" {
-		query = query.Where("entity_type = ?", entityType)
-	}
-	query.Count(&total)
-	if err := query.Order("create_time DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&dos).Error; err != nil {
-		zap.L().Error("查询审计日志失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
+	pq := httpx.PageFromQuery(c)
+	vos, total, err := h.svc.Audit.List(c.Request.Context(), pq, c.Query("entityType"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	vos := make([]bizChangeLogVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, bizChangeLogVO{
-			ID: d.ID, EntityType: d.EntityType, EntityID: d.EntityID,
-			Action: d.Action, Operator: d.Operator,
-			BeforeSnapshot: d.BeforeSnapshot, AfterSnapshot: d.AfterSnapshot,
-			CreateTime: d.CreateTime.Format("2006-01-02 15:04:05"),
-		})
-	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
+	httpx.OK(c, gin.H{"total": total, "rows": vos})
 }
 
 func (h *Handler) getBizChangeLog(c *gin.Context) {
-	var do model.BizChangeLogDO
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.db.WithContext(c.Request.Context()).First(&do, id).Error; err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "日志不存在"))
+	vo, err := h.svc.Audit.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(bizChangeLogVO{
-		ID: do.ID, EntityType: do.EntityType, EntityID: do.EntityID,
-		Action: do.Action, Operator: do.Operator,
-		BeforeSnapshot: do.BeforeSnapshot, AfterSnapshot: do.AfterSnapshot,
-		CreateTime: do.CreateTime.Format("2006-01-02 15:04:05"),
-	}))
-}
-
-// WriteAudit 写入审计日志（供其他 handler 调用）
-func (h *Handler) WriteAudit(entityType, entityID, action, operator, before, after string) {
-	log := model.BizChangeLogDO{
-		EntityType: entityType, EntityID: entityID, Action: action,
-		Operator: operator, BeforeSnapshot: before, AfterSnapshot: after,
-	}
-	if err := h.db.Create(&log).Error; err != nil {
-		zap.L().Warn("审计日志写入失败", zap.Error(err))
-	}
+	httpx.OK(c, vo)
 }

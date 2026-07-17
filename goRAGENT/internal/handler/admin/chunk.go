@@ -1,115 +1,58 @@
 package admin
 
 import (
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
-	"goRAGENT/pkg/response"
+	"goRAGENT/internal/handler/httpx"
 	"goRAGENT/internal/model"
-	"go.uber.org/zap"
 )
 
-type chunkVO = model.ChunkVO
-type chunkUpdateReq = model.ChunkUpdateReq
-
 func (h *Handler) listChunksByKB(c *gin.Context) {
-	kbID := c.Param("id")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-
-	var dos []model.ChunkDO
-	var total int64
-	h.db.WithContext(c.Request.Context()).Model(&model.ChunkDO{}).
-		Where("kb_id = ? AND deleted = 0", kbID).Count(&total)
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("kb_id = ? AND deleted = 0", kbID).
-		Order("chunk_index ASC").Offset((page-1)*pageSize).Limit(pageSize).
-		Find(&dos).Error; err != nil {
-		zap.L().Error("查询 Chunk 列表失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
+	pq := httpx.PageFromQuery(c)
+	vos, total, err := h.svc.Chunk.ListByKB(c.Request.Context(), c.Param("id"), pq)
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	vos := make([]chunkVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, model.ChunkDOToVO(d))
-	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
+	httpx.OK(c, gin.H{"total": total, "rows": vos})
 }
 
 func (h *Handler) listChunks(c *gin.Context) {
-	docID := c.Param("id")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-
-	var dos []model.ChunkDO
-	var total int64
-	h.db.WithContext(c.Request.Context()).Model(&model.ChunkDO{}).
-		Where("doc_id = ? AND deleted = 0", docID).Count(&total)
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("doc_id = ? AND deleted = 0", docID).
-		Order("chunk_index ASC").Offset((page-1)*pageSize).Limit(pageSize).
-		Find(&dos).Error; err != nil {
-		zap.L().Error("查询 Chunk 列表失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询失败"))
+	pq := httpx.PageFromQuery(c)
+	vos, total, err := h.svc.Chunk.ListByDoc(c.Request.Context(), c.Param("id"), pq)
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-
-	vos := make([]chunkVO, 0, len(dos))
-	for _, d := range dos {
-		vos = append(vos, model.ChunkDOToVO(d))
-	}
-	c.JSON(http.StatusOK, response.Success(gin.H{"total": total, "rows": vos}))
+	httpx.OK(c, gin.H{"total": total, "rows": vos})
 }
 
 func (h *Handler) getChunk(c *gin.Context) {
-	var do model.ChunkDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("id = ? AND deleted = 0", c.Param("chunkId")).First(&do).Error; err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "Chunk 不存在"))
+	vo, err := h.svc.Chunk.Get(c.Request.Context(), c.Param("chunkId"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.Success(model.ChunkDOToVO(do)))
+	httpx.OK(c, vo)
 }
 
 func (h *Handler) updateChunk(c *gin.Context) {
-	var req chunkUpdateReq
+	var req model.ChunkUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "参数错误"))
+		httpx.BadRequest(c, "参数错误")
 		return
 	}
-	updates := map[string]any{}
-	if req.Text != nil {
-		updates["text"] = *req.Text
-		updates["char_count"] = len([]rune(*req.Text))
-	}
-	if len(updates) == 0 {
-		c.JSON(http.StatusOK, response.SuccessOK())
+	if err := h.svc.Chunk.Update(c.Request.Context(), c.Param("chunkId"), req); err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	if err := h.db.WithContext(c.Request.Context()).
-		Model(&model.ChunkDO{}).
-		Where("id = ? AND deleted = 0", c.Param("chunkId")).
-		Updates(updates).Error; err != nil {
-		zap.L().Error("更新 Chunk 失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "更新失败"))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	httpx.OKEmpty(c)
 }
 
 func (h *Handler) toggleChunk(c *gin.Context) {
-	var do model.ChunkDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("id = ? AND deleted = 0", c.Param("chunkId")).First(&do).Error; err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "Chunk 不存在"))
+	enabled, err := h.svc.Chunk.Toggle(c.Request.Context(), c.Param("chunkId"))
+	if err != nil {
+		httpx.Error(c, err)
 		return
 	}
-	newEnabled := 0
-	if do.Enabled == 0 {
-		newEnabled = 1
-	}
-	h.db.WithContext(c.Request.Context()).Model(&do).Update("enabled", newEnabled)
-	c.JSON(http.StatusOK, response.Success(gin.H{"enabled": newEnabled}))
+	httpx.OK(c, gin.H{"enabled": enabled})
 }

@@ -25,6 +25,7 @@ import (
 	"goRAGENT/internal/model"
 	mysqlrepo "goRAGENT/internal/repository/mysql"
 	"goRAGENT/internal/router"
+	svcadmin "goRAGENT/internal/service/admin"
 	authsvc "goRAGENT/internal/service/auth"
 	"goRAGENT/internal/service/ingestion"
 	"goRAGENT/internal/service/mcp"
@@ -142,12 +143,17 @@ func main() {
 	}
 
 	chatHandler := chat.NewSimpleChatHandler(cfg, ragPipeline, db)
-	adminH := admin.NewHandler(db).
-		SetIntentCacheClearer(intentLoader).
-		SetMappingCacheClearer(mappingLoader).
-		SetMilvusStore(mvStore).
-		SetIngestionEngine(ingestionEngine).
-		SetDataDir(cfg.Mineru.DataDir)
+	repos := mysqlrepo.New(db)
+	services := svcadmin.NewServices(
+		&repos,
+		mvStore,
+		intentLoader,
+		mappingLoader,
+		ingestionEngine,
+		authsvc.NewMD5PasswordHasher(),
+		cfg.Mineru.DataDir,
+	)
+	adminH := admin.NewHandler(*services)
 
 	var chatLimiter *middleware.Limiter
 	if rdb != nil {
@@ -163,7 +169,7 @@ func main() {
 	r.Use(gin.Recovery())
 	router.Register(r, router.Deps{
 		Cfg: cfg, AdminH: adminH, ChatHandler: chatHandler, ChatLimiter: chatLimiter,
-		AuthSvc: authSvc,
+		AuthSvc: authSvc, SessionDB: db,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.App.Host, cfg.App.Port)
@@ -198,7 +204,7 @@ func initDB(cfg *config.Config) (*gorm.DB, error) {
 
 func initRedis(cfg *config.Config) *redis.Client {
 	return redis.NewClient(&redis.Options{
-		Addr: cfg.Redis.Host + ":" + fmt.Sprintf("%d", cfg.Redis.Port),
+		Addr:     cfg.Redis.Host + ":" + fmt.Sprintf("%d", cfg.Redis.Port),
 		Password: cfg.Redis.Password, DB: cfg.Redis.DB,
 	})
 }
