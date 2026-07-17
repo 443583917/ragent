@@ -21,6 +21,7 @@ import (
 	"goRAGENT/internal/config"
 	"goRAGENT/internal/handler/admin"
 	"goRAGENT/internal/handler/chat"
+	"goRAGENT/internal/handler/session"
 	"goRAGENT/internal/middleware"
 	"goRAGENT/internal/model"
 	mysqlrepo "goRAGENT/internal/repository/mysql"
@@ -142,8 +143,17 @@ func main() {
 		zap.L().Info("MCP 已启用", zap.Int("servers", len(cfg.Mcp.Servers)))
 	}
 
-	chatHandler := chat.NewSimpleChatHandler(cfg, ragPipeline, db)
+	// 装配 repository 层（需在 chatHandler/sessionService 前）
 	repos := mysqlrepo.New(db)
+
+	// 会话业务服务 + HTTP handler
+	sessionSvc := rag.NewSessionService(repos.Conversation, repos.Message)
+	sessionH := session.NewHandler(sessionSvc)
+
+	// 追踪记录器 + chat handler
+	traceRecorder := rag.NewTraceRecorder(repos.Trace)
+	chatHandler := chat.NewSimpleChatHandler(cfg, ragPipeline, traceRecorder)
+
 	services := svcadmin.NewServices(
 		&repos,
 		mvStore,
@@ -169,7 +179,7 @@ func main() {
 	r.Use(gin.Recovery())
 	router.Register(r, router.Deps{
 		Cfg: cfg, AdminH: adminH, ChatHandler: chatHandler, ChatLimiter: chatLimiter,
-		AuthSvc: authSvc, SessionDB: db,
+		AuthSvc: authSvc, SessionHandler: sessionH,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.App.Host, cfg.App.Port)

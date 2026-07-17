@@ -30,6 +30,18 @@ func (r *summaryRepo) Latest(ctx context.Context, convID string) (*model.Convers
 	return &do, nil
 }
 
+// LatestForUser 最新一条摘要（对照 loadLatestSummary：WHERE conversation_id=? AND user_id=? AND deleted=0 ORDER BY id DESC LIMIT 1）。
+func (r *summaryRepo) LatestForUser(ctx context.Context, convID, userID string) (*model.ConversationSummaryDO, error) {
+	var do model.ConversationSummaryDO
+	if err := r.db.WithContext(ctx).Scopes(notDeleted).
+		Where("conversation_id = ? AND user_id = ?", convID, userID).
+		Order("id DESC").Limit(1).
+		Take(&do).Error; err != nil {
+		return nil, fmt.Errorf("find latest summary conversation_id=%s user_id=%s: %w", convID, userID, err)
+	}
+	return &do, nil
+}
+
 func (r *summaryRepo) Create(ctx context.Context, s *model.ConversationSummaryDO) error {
 	if err := r.db.WithContext(ctx).Create(s).Error; err != nil {
 		return fmt.Errorf("create summary: %w", err)

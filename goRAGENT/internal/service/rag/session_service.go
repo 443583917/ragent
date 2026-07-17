@@ -1,15 +1,12 @@
 package rag
 
 import (
-	"net/http"
+	"context"
+	"fmt"
 
-	"github.com/gin-gonic/gin"
 	"goRAGENT/internal/model"
-	"goRAGENT/internal/config"
-	"goRAGENT/pkg/response"
-	"goRAGENT/internal/middleware"
+	"goRAGENT/internal/repository"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 const timeLayout = "2006-01-02 15:04:05"
@@ -52,144 +49,82 @@ func msgToVO(d model.ConversationMessageDO) ConversationMessageVO {
 	return vo
 }
 
-// SessionHandler 会话/消息/反馈 API（和 Java ConversationController + MessageFeedbackController 对应）
-type SessionHandler struct {
-	db  *gorm.DB
-	cfg *config.Config
+// SessionService 会话业务接口（无 HTTP 依赖）。
+type SessionService interface {
+	ListSessions(ctx context.Context, userID string) ([]ConversationVO, error)
+	RenameSession(ctx context.Context, conversationID, userID, title string) error
+	DeleteSession(ctx context.Context, conversationID, userID string) error
+	ListMessages(ctx context.Context, conversationID, userID string) ([]ConversationMessageVO, error)
+	SubmitFeedback(ctx context.Context, messageID, userID string, vote *int) error
+	CancelFeedback(ctx context.Context, messageID, userID string) error
 }
 
-func NewSessionHandler(db *gorm.DB, cfg *config.Config) *SessionHandler {
-	return &SessionHandler{db: db, cfg: cfg}
+type sessionService struct {
+	convRepo repository.ConversationRepository
+	msgRepo  repository.MessageRepository
 }
 
-// RegisterRoutes 注册前端实际使用的 /conversations 契约路由（调用方需已挂 JWT 中间件）
-func (h *SessionHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.GET("/conversations", h.ListSessions)
-	r.PUT("/conversations/:conversationId", h.RenameSession)
-	r.DELETE("/conversations/:conversationId", h.DeleteSession)
-	r.GET("/conversations/:conversationId/messages", h.ListMessages)
-	r.POST("/conversations/messages/:messageId/feedback", h.SubmitFeedback)
-	r.DELETE("/conversations/messages/:messageId/feedback", h.CancelFeedback)
+// NewSessionService 创建 SessionService 实现。
+func NewSessionService(convRepo repository.ConversationRepository, msgRepo repository.MessageRepository) SessionService {
+	return &sessionService{convRepo: convRepo, msgRepo: msgRepo}
 }
 
-func (h *SessionHandler) uid(c *gin.Context) (string, bool) {
-	uid := middleware.GetUserID(c.Request.Context())
-	if uid == "" {
-		c.JSON(http.StatusUnauthorized, response.Failure(response.CodeNotLogin, "未登录"))
-		return "", false
-	}
-	return uid, true
-}
-
-func (h *SessionHandler) ListSessions(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	var rows []model.ConversationDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("user_id = ? AND deleted = 0", uid).
-		Order("last_time DESC").Limit(200).
-		Find(&rows).Error; err != nil {
+func (s *sessionService) ListSessions(ctx context.Context, userID string) ([]ConversationVO, error) {
+	rows, err := s.convRepo.ListByUser(ctx, userID, 200)
+	if err != nil {
 		zap.L().Error("查询会话列表失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询会话失败"))
-		return
+		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 	vos := make([]ConversationVO, len(rows))
 	for i, r := range rows {
 		vos[i] = convToVO(r)
 	}
-	c.JSON(http.StatusOK, response.Success(vos))
+	return vos, nil
 }
 
-func (h *SessionHandler) RenameSession(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	var req struct {
-		Title string `json:"title" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "title 不能为空"))
-		return
-	}
-	if err := h.db.WithContext(c.Request.Context()).Model(&model.ConversationDO{}).
-		Where("conversation_id = ? AND user_id = ? AND deleted = 0", c.Param("conversationId"), uid).
-		Update("title", req.Title).Error; err != nil {
+func (s *sessionService) RenameSession(ctx context.Context, conversationID, userID, title string) error {
+	if err := s.convRepo.UpdateFieldsForUser(ctx, conversationID, userID, map[string]any{"title": title}); err != nil {
 		zap.L().Error("重命名会话失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "重命名失败"))
-		return
+		return fmt.Errorf("rename session: %w", err)
 	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	return nil
 }
 
-func (h *SessionHandler) DeleteSession(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	if err := h.db.WithContext(c.Request.Context()).Model(&model.ConversationDO{}).
-		Where("conversation_id = ? AND user_id = ?", c.Param("conversationId"), uid).
-		Update("deleted", 1).Error; err != nil {
+func (s *sessionService) DeleteSession(ctx context.Context, conversationID, userID string) error {
+	if err := s.convRepo.SoftDeleteForUser(ctx, conversationID, userID); err != nil {
 		zap.L().Error("删除会话失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "删除失败"))
-		return
+		return fmt.Errorf("delete session: %w", err)
 	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	return nil
 }
 
-func (h *SessionHandler) ListMessages(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	var rows []model.ConversationMessageDO
-	if err := h.db.WithContext(c.Request.Context()).
-		Where("conversation_id = ? AND user_id = ? AND deleted = 0", c.Param("conversationId"), uid).
-		Order("id ASC").
-		Find(&rows).Error; err != nil {
+func (s *sessionService) ListMessages(ctx context.Context, conversationID, userID string) ([]ConversationMessageVO, error) {
+	rows, err := s.msgRepo.ListByConversationForUser(ctx, conversationID, userID)
+	if err != nil {
 		zap.L().Error("查询会话消息失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeServerError, "查询消息失败"))
-		return
+		return nil, fmt.Errorf("list messages: %w", err)
 	}
 	vos := make([]ConversationMessageVO, len(rows))
 	for i, r := range rows {
 		vos[i] = msgToVO(r)
 	}
-	c.JSON(http.StatusOK, response.Success(vos))
+	return vos, nil
 }
 
-func (h *SessionHandler) SubmitFeedback(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	var req struct {
-		Vote *int `json:"vote" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, response.Failure(response.CodeParamError, "vote 不能为空"))
-		return
-	}
-	h.updateVote(c, uid, req.Vote)
-}
-
-func (h *SessionHandler) CancelFeedback(c *gin.Context) {
-	uid, ok := h.uid(c)
-	if !ok {
-		return
-	}
-	h.updateVote(c, uid, nil)
-}
-
-func (h *SessionHandler) updateVote(c *gin.Context, uid string, vote *int) {
-	if err := h.db.WithContext(c.Request.Context()).Model(&model.ConversationMessageDO{}).
-		Where("id = ? AND user_id = ?", c.Param("messageId"), uid).
-		Update("vote", vote).Error; err != nil {
+// SubmitFeedback 提交/更新反馈（vote=nil 等效取消，通过 UpdateVoteForUser 实现）。
+func (s *sessionService) SubmitFeedback(ctx context.Context, messageID, userID string, vote *int) error {
+	if err := s.msgRepo.UpdateVoteForUser(ctx, messageID, userID, vote); err != nil {
 		zap.L().Error("更新反馈失败", zap.Error(err))
-		c.JSON(http.StatusOK, response.Failure(response.CodeBusinessError, "反馈失败"))
-		return
+		return fmt.Errorf("submit feedback: %w", err)
 	}
-	c.JSON(http.StatusOK, response.SuccessOK())
+	return nil
+}
+
+// CancelFeedback 取消反馈（vote=nil）。
+func (s *sessionService) CancelFeedback(ctx context.Context, messageID, userID string) error {
+	if err := s.msgRepo.UpdateVoteForUser(ctx, messageID, userID, nil); err != nil {
+		zap.L().Error("取消反馈失败", zap.Error(err))
+		return fmt.Errorf("cancel feedback: %w", err)
+	}
+	return nil
 }

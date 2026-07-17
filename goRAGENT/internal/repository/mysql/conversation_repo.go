@@ -30,14 +30,22 @@ func (r *conversationRepo) ListByUser(ctx context.Context, userID string, limit 
 	return dos, nil
 }
 
-// Exists 会话是否存在（对照 createOrUpdateConversation 的 Count 判断，不过滤 deleted）。
-// 注意：原实现 memory_service.go:98 的 WHERE 还带 user_id 条件，本接口签名未表达
-// user 归属（conversation_id 为 snowflake 全局唯一，功能等价；user 归属校验由后续任务处理）。
+// Exists 会话是否存在（不过滤 deleted，conversation_id 为 snowflake 全局唯一）。
 func (r *conversationRepo) Exists(ctx context.Context, id string) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).
 		Where("conversation_id = ?", id).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("count conversation id=%s: %w", id, err)
+	}
+	return count > 0, nil
+}
+
+// ExistsForUser 会话是否存在且归属于指定用户（对照 createOrUpdateConversation：COUNT WHERE conversation_id=? AND user_id=?）。
+func (r *conversationRepo) ExistsForUser(ctx context.Context, id, userID string) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).
+		Where("conversation_id = ? AND user_id = ?", id, userID).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("count conversation id=%s user_id=%s: %w", id, userID, err)
 	}
 	return count > 0, nil
 }
@@ -60,10 +68,32 @@ func (r *conversationRepo) UpdateFields(ctx context.Context, id string, updates 
 	return nil
 }
 
+// UpdateFieldsForUser 更新会话字段（对照 RenameSession：WHERE conversation_id=? AND user_id=? AND deleted=0）。
+func (r *conversationRepo) UpdateFieldsForUser(ctx context.Context, id, userID string, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).
+		Scopes(notDeleted).Where("conversation_id = ? AND user_id = ?", id, userID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("update conversation id=%s user_id=%s: %w", id, userID, err)
+	}
+	return nil
+}
+
 func (r *conversationRepo) SoftDelete(ctx context.Context, id string) error {
 	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).
 		Where("conversation_id = ?", id).Update("deleted", 1).Error; err != nil {
 		return fmt.Errorf("soft delete conversation id=%s: %w", id, err)
+	}
+	return nil
+}
+
+// SoftDeleteForUser 软删会话（对照 DeleteSession：WHERE conversation_id=? AND user_id=?）。
+func (r *conversationRepo) SoftDeleteForUser(ctx context.Context, id, userID string) error {
+	if err := r.db.WithContext(ctx).Model(&model.ConversationDO{}).
+		Where("conversation_id = ? AND user_id = ?", id, userID).
+		Update("deleted", 1).Error; err != nil {
+		return fmt.Errorf("soft delete conversation id=%s user_id=%s: %w", id, userID, err)
 	}
 	return nil
 }

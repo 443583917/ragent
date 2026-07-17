@@ -2,26 +2,25 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"goRAGENT/internal/config"
 	"goRAGENT/internal/handler/admin"
 	"goRAGENT/internal/handler/auth"
 	"goRAGENT/internal/handler/chat"
+	"goRAGENT/internal/handler/session"
 	"goRAGENT/internal/middleware"
 	authsvc "goRAGENT/internal/service/auth"
-	"goRAGENT/internal/service/rag"
 	"goRAGENT/pkg/jwt"
 )
 
 // Deps 路由层依赖（由 main 装配后传入）
 type Deps struct {
-	Cfg         *config.Config
-	AdminH      *admin.Handler
-	ChatHandler *chat.ChatHandler
-	ChatLimiter *middleware.Limiter
-	AuthSvc     authsvc.AuthService
-	SessionDB   *gorm.DB // TODO(Task 6): 移除，session handler 改为 service 注入
+	Cfg            *config.Config
+	AdminH         *admin.Handler
+	ChatHandler    *chat.ChatHandler
+	ChatLimiter    *middleware.Limiter
+	AuthSvc        authsvc.AuthService
+	SessionHandler *session.Handler
 }
 
 // Register 注册全部路由到 gin.Engine
@@ -44,9 +43,8 @@ func Register(r *gin.Engine, d Deps) {
 	ragV3.POST("/stop", d.ChatHandler.StopTask)
 
 	// 会话 + 消息 + 反馈（JWT）
-	sessH := rag.NewSessionHandler(d.SessionDB, d.Cfg)
 	sessionGroup := api.Group("", jwt.Middleware(d.Cfg.SaToken.TokenName))
-	sessH.RegisterRoutes(sessionGroup)
+	d.SessionHandler.RegisterRoutes(sessionGroup)
 
 	// 用户信息（JWT）
 	api.GET("/user/me", jwt.Middleware(d.Cfg.SaToken.TokenName), authH.CurrentUser)

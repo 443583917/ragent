@@ -12,19 +12,18 @@ import (
 	"goRAGENT/pkg/snowflake"
 	"goRAGENT/pkg/sse"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 type ChatHandler struct {
 	cfg      *config.Config
 	pipeline *rag.SimplePipeline
-	db       *gorm.DB
+	recorder rag.TraceRecorder
 	mu       sync.Mutex
 	taskCtxs map[string]context.CancelFunc
 }
 
-func NewSimpleChatHandler(cfg *config.Config, pl *rag.SimplePipeline, db *gorm.DB) *ChatHandler {
-	return &ChatHandler{cfg: cfg, pipeline: pl, db: db, taskCtxs: make(map[string]context.CancelFunc)}
+func NewSimpleChatHandler(cfg *config.Config, pl *rag.SimplePipeline, recorder rag.TraceRecorder) *ChatHandler {
+	return &ChatHandler{cfg: cfg, pipeline: pl, recorder: recorder, taskCtxs: make(map[string]context.CancelFunc)}
 }
 
 func (h *ChatHandler) StreamChat(c *gin.Context) {
@@ -52,11 +51,10 @@ func (h *ChatHandler) StreamChat(c *gin.Context) {
 	taskID := snowflake.NextID()
 	emitter.SendEvent(sse.EventMeta, sse.MetaPayload{ConversationID: cid, TaskID: taskID})
 
-	if h.db != nil {
-		h.db.Create(&model.TraceRunDO{
-			RunID: taskID, ConversationID: cid, UserID: uid,
-			Question: q, Status: "RUNNING",
-		})
+	if h.recorder != nil {
+		if err := h.recorder.StartRun(c.Request.Context(), taskID, cid, uid, q); err != nil {
+			zap.L().Error("创建追踪记录失败", zap.Error(err))
+		}
 	}
 
 	pipeCtx := &rag.Ctx{Question: q, ConversationID: cid, TaskID: taskID, UserID: uid}
@@ -81,17 +79,19 @@ func (h *ChatHandler) StreamChat(c *gin.Context) {
 
 	select {
 	case <-done:
-		if h.db != nil {
-			h.db.Model(&model.TraceRunDO{}).Where("run_id = ?", taskID).Update("status", "DONE")
+		if h.recorder != nil {
+			if err := h.recorder.FinishRun(context.Background(), taskID, model.TraceStatusSuccess); err != nil {
+				zap.L().Error("更新追踪状态失败", zap.Error(err))
+			}
 		}
 	case <-c.Request.Context().Done():
 		cancel()
 		cancelFn()
 		emitter.Complete()
-		if h.db != nil {
-			h.db.Model(&model.TraceRunDO{}).Where("run_id = ?", taskID).Updates(map[string]any{
-				"status": "CANCELLED", "error_message": "客户端断连",
-			})
+		if h.recorder != nil {
+			if err := h.recorder.CancelByTaskID(context.Background(), taskID, rag.TraceErrClientDisconnect); err != nil {
+				zap.L().Error("取消追踪记录失败", zap.Error(err))
+			}
 		}
 	}
 
@@ -116,10 +116,10 @@ func (h *ChatHandler) StopTask(c *gin.Context) {
 
 	if ok {
 		cancel()
-		if h.db != nil {
-			h.db.Model(&model.TraceRunDO{}).Where("run_id = ?", taskID).Updates(map[string]any{
-				"status": "CANCELLED", "error_message": "用户取消",
-			})
+		if h.recorder != nil {
+			if err := h.recorder.CancelByTaskID(context.Background(), taskID, rag.TraceErrUserCancel); err != nil {
+				zap.L().Error("取消追踪记录失败", zap.Error(err))
+			}
 		}
 	}
 	c.JSON(200, gin.H{"code": "0"})
