@@ -2,37 +2,44 @@ package ingestion
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"goRAGENT/internal/config"
 	"goRAGENT/pkg/embedding"
 	"goRAGENT/pkg/mineru"
 	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/milvus"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // Engine 入库流水线引擎
 type Engine struct {
-	db    *gorm.DB
-	nodes []Node
+	taskRepo repository.IngestionTaskRepository
+	docRepo  repository.DocumentRepository
+	kbRepo   repository.KnowledgeBaseRepository
+	nodes    []Node
 }
 
 // NewEngine 创建引擎（注入依赖 + 组装节点链）
-func NewEngine(db *gorm.DB, mineruClient *mineru.Client, embedSvc *embedding.Service, milvusStore *milvus.MilvusStore, cfg config.IngestionConfig) *Engine {
-	dataDir := config.Get().Mineru.DataDir
+func NewEngine(taskRepo repository.IngestionTaskRepository, docRepo repository.DocumentRepository,
+	kbRepo repository.KnowledgeBaseRepository, chunkRepo repository.ChunkRepository,
+	dataDir string, mineruClient *mineru.Client, embedSvc *embedding.Service,
+	milvusStore *milvus.MilvusStore, cfg config.IngestionConfig) *Engine {
 	if dataDir == "" {
 		dataDir = "data"
 	}
 
 	return &Engine{
-		db: db,
+		taskRepo: taskRepo,
+		docRepo:  docRepo,
+		kbRepo:   kbRepo,
 		nodes: []Node{
 			&Fetcher{DataDir: dataDir},
 			NewParser(mineruClient, dataDir),
 			NewChunker(cfg),
-			NewIndexer(db, embedSvc, milvusStore, cfg.EmbedBatchSize),
+			NewIndexer(chunkRepo, taskRepo, docRepo, embedSvc, milvusStore, cfg.EmbedBatchSize),
 		},
 	}
 }
@@ -41,32 +48,32 @@ func NewEngine(db *gorm.DB, mineruClient *mineru.Client, embedSvc *embedding.Ser
 func (e *Engine) Run(taskID int64) {
 	go func() {
 		ctx := context.Background()
-		var task model.IngestionTaskDO
 
 		// 1. 加载 task + doc + kb
-		if err := e.db.First(&task, taskID).Error; err != nil {
+		task, err := e.taskRepo.FindByID(ctx, strconv.FormatInt(taskID, 10))
+		if err != nil {
 			zap.L().Error("查询入库任务失败", zap.Int64("task_id", taskID), zap.Error(err))
 			return
 		}
 
-		var doc model.DocumentDO
-		if err := e.db.First(&doc, "id = ?", task.DocID).Error; err != nil {
+		doc, err := e.docRepo.FindByID(ctx, task.DocID)
+		if err != nil {
 			zap.L().Error("查询文档失败", zap.String("doc_id", task.DocID), zap.Error(err))
 			return
 		}
 
-		var kb model.KnowledgeBaseDO
-		if err := e.db.First(&kb, "id = ?", task.KbID).Error; err != nil {
+		kb, err := e.kbRepo.FindByID(ctx, task.KbID)
+		if err != nil {
 			zap.L().Error("查询知识库失败", zap.String("kb_id", task.KbID), zap.Error(err))
 			return
 		}
 
 		// 2. 更新状态为 RUNNING
-		e.db.Model(&task).Updates(map[string]any{"status": model.TaskStatusRunning})
-		e.db.Model(&doc).Updates(map[string]any{"status": model.DocStatusProcessing})
+		e.taskRepo.UpdateFields(ctx, strconv.FormatInt(task.ID, 10), map[string]any{"status": model.TaskStatusRunning})
+		e.docRepo.UpdateFields(ctx, doc.ID, map[string]any{"status": model.DocStatusProcessing})
 
 		// 3. 构建上下文 + 顺序执行节点
-		pc := &PipelineContext{Task: &task, KB: &kb, Doc: &doc}
+		pc := &PipelineContext{Task: task, KB: kb, Doc: doc}
 
 		for _, node := range e.nodes {
 			t0 := time.Now()
@@ -78,11 +85,11 @@ func (e *Engine) Run(taskID int64) {
 					zap.Int64("task_id", taskID),
 					zap.Error(err),
 				)
-				e.db.Model(&task).Updates(map[string]any{
+				e.taskRepo.UpdateFields(ctx, strconv.FormatInt(task.ID, 10), map[string]any{
 					"status":        model.TaskStatusFailed,
 					"error_message": err.Error(),
 				})
-				e.db.Model(&doc).Updates(map[string]any{"status": model.DocStatusFailed})
+				e.docRepo.UpdateFields(ctx, doc.ID, map[string]any{"status": model.DocStatusFailed})
 				return
 			}
 
@@ -93,7 +100,7 @@ func (e *Engine) Run(taskID int64) {
 		}
 
 		// 4. 全部成功
-		e.db.Model(&task).Updates(map[string]any{
+		e.taskRepo.UpdateFields(ctx, strconv.FormatInt(task.ID, 10), map[string]any{
 			"status":       model.TaskStatusDone,
 			"total_chunks": len(pc.Chunks),
 		})

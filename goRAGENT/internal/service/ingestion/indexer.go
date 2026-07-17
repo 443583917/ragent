@@ -4,25 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"goRAGENT/pkg/snowflake"
 	"goRAGENT/pkg/embedding"
 	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/milvus"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // Indexer 嵌入+索引+落库节点
 type Indexer struct {
-	db        *gorm.DB
+	chunkRepo repository.ChunkRepository
+	taskRepo  repository.IngestionTaskRepository
+	docRepo   repository.DocumentRepository
 	embed     *embedding.Service
 	milvus    *milvus.MilvusStore
 	batchSize int
 }
 
-func NewIndexer(db *gorm.DB, embedSvc *embedding.Service, milvusStore *milvus.MilvusStore, batchSize int) *Indexer {
-	return &Indexer{db: db, embed: embedSvc, milvus: milvusStore, batchSize: batchSize}
+func NewIndexer(chunkRepo repository.ChunkRepository, taskRepo repository.IngestionTaskRepository,
+	docRepo repository.DocumentRepository, embedSvc *embedding.Service,
+	milvusStore *milvus.MilvusStore, batchSize int) *Indexer {
+	return &Indexer{chunkRepo: chunkRepo, taskRepo: taskRepo, docRepo: docRepo,
+		embed: embedSvc, milvus: milvusStore, batchSize: batchSize}
 }
 
 func (idx *Indexer) Name() string { return "Indexer" }
@@ -96,20 +102,24 @@ func (idx *Indexer) Execute(ctx context.Context, pc *PipelineContext) error {
 		}
 
 		// 4. MySQL 批量写入
-		if err := idx.db.WithContext(ctx).Create(&mysqlChunks).Error; err != nil {
+		if err := idx.chunkRepo.BatchCreate(ctx, mysqlChunks); err != nil {
 			return fmt.Errorf("MySQL 写入 t_chunk 失败 (offset=%d): %w", start, err)
 		}
 
 		// 5. 更新 task 进度
-		idx.db.WithContext(ctx).Model(pc.Task).
-			Update("completed_chunks", end)
+		if err := idx.taskRepo.UpdateFields(ctx, strconv.FormatInt(pc.Task.ID, 10),
+			map[string]any{"completed_chunks": end}); err != nil {
+			return fmt.Errorf("更新 task 进度失败 (offset=%d): %w", start, err)
+		}
 	}
 
 	// 更新 t_document
-	idx.db.WithContext(ctx).Model(pc.Doc).Updates(map[string]any{
+	if err := idx.docRepo.UpdateFields(ctx, pc.Doc.ID, map[string]any{
 		"chunk_count": totalChunks,
 		"status":      model.DocStatusDone,
-	})
+	}); err != nil {
+		return fmt.Errorf("更新文档状态失败: %w", err)
+	}
 
 	zap.L().Info("Indexer 入库完成",
 		zap.String("doc_id", pc.Doc.ID),

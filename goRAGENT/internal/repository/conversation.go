@@ -24,6 +24,7 @@ type MessageRepository interface {
 	ListByConversationForUser(ctx context.Context, convID, userID string) ([]model.ConversationMessageDO, error)
 	ListRecent(ctx context.Context, convID string, limit int) ([]model.ConversationMessageDO, error)
 	ListRecentForUser(ctx context.Context, convID, userID string, limit int) ([]model.ConversationMessageDO, error)
+	ListRecentByRole(ctx context.Context, convID, userID, role string, limit int) ([]model.ConversationMessageDO, error)
 	ListRange(ctx context.Context, convID string, afterID, beforeID int64) ([]model.ConversationMessageDO, error)
 	ListRangeForUser(ctx context.Context, convID, userID string, afterID, beforeID int64) ([]model.ConversationMessageDO, error)
 	CountUserMessages(ctx context.Context, convID string) (int64, error)

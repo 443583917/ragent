@@ -9,8 +9,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 const (
@@ -21,12 +21,12 @@ const (
 
 // TreeLoader 意图树加载器：Redis 缓存 → MySQL fallback → 回填缓存
 type TreeLoader struct {
-	db  *gorm.DB
-	rdb *redis.Client
+	repo repository.IntentNodeRepository
+	rdb  *redis.Client
 }
 
-func NewTreeLoader(db *gorm.DB, rdb *redis.Client) *TreeLoader {
-	return &TreeLoader{db: db, rdb: rdb}
+func NewTreeLoader(repo repository.IntentNodeRepository, rdb *redis.Client) *TreeLoader {
+	return &TreeLoader{repo: repo, rdb: rdb}
 }
 
 // Load 加载意图树根节点列表（任一环节失败均降级，不报错中断）
@@ -76,6 +76,7 @@ func (l *TreeLoader) saveCache(ctx context.Context, roots []*model.IntentNode) {
 	}
 	raw, err := json.Marshal(roots)
 	if err != nil {
+		zap.L().Warn("intent cache marshal failed", zap.Error(err))
 		return
 	}
 	if err := l.rdb.Set(ctx, intentTreeCacheKey, raw, cacheExpire).Err(); err != nil {
@@ -84,13 +85,11 @@ func (l *TreeLoader) saveCache(ctx context.Context, roots []*model.IntentNode) {
 }
 
 func (l *TreeLoader) fromDB(ctx context.Context) []*model.IntentNode {
-	if l.db == nil {
+	if l.repo == nil {
 		return nil
 	}
-	var dos []model.IntentNodeDO
-	if err := l.db.WithContext(ctx).
-		Where("deleted = 0 AND enabled = 1").
-		Find(&dos).Error; err != nil {
+	dos, err := l.repo.ListActive(ctx)
+	if err != nil {
 		zap.L().Error("从 DB 加载意图树失败", zap.Error(err))
 		return nil
 	}

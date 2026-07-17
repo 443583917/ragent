@@ -63,14 +63,10 @@ func (m *ConversationMemory) decorateSummary(content string) string {
 
 // loadLatestSummary 最新一条摘要（content, lastMessageID）；无摘要返回 "", 0
 func (m *ConversationMemory) loadLatestSummary(ctx context.Context, conversationID, userID string) (string, int64) {
-	if m.db == nil {
+	if m.summaryRepo == nil {
 		return "", 0
 	}
-	var row model.ConversationSummaryDO
-	err := m.db.WithContext(ctx).
-		Where("conversation_id = ? AND user_id = ? AND deleted = 0", conversationID, userID).
-		Order("id DESC").Limit(1).
-		Take(&row).Error
+	row, err := m.summaryRepo.LatestForUser(ctx, conversationID, userID)
 	if err != nil {
 		return "", 0
 	}
@@ -88,7 +84,7 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 	}()
 	mc := m.cfg.Memory
 	if !mc.SummaryEnabled || mc.SummaryStartTurns <= 0 || mc.HistoryKeepTurns <= 0 ||
-		mc.SummaryStartTurns <= mc.HistoryKeepTurns || m.db == nil || m.llm == nil {
+		mc.SummaryStartTurns <= mc.HistoryKeepTurns || m.msgRepo == nil || m.llm == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -105,19 +101,14 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 	}
 
 	// 用户消息总数达到触发轮数
-	var total int64
-	if err := m.db.WithContext(ctx).Model(&model.ConversationMessageDO{}).
-		Where("conversation_id = ? AND user_id = ? AND role = 'user' AND deleted = 0", conversationID, userID).
-		Count(&total).Error; err != nil || total < int64(mc.SummaryStartTurns) {
+	total, err := m.msgRepo.CountUserMessagesForUser(ctx, conversationID, userID)
+	if err != nil || total < int64(mc.SummaryStartTurns) {
 		return
 	}
 
 	// 最近 keepTurns 条 user 消息窗口（DESC）
-	var window []model.ConversationMessageDO
-	if err := m.db.WithContext(ctx).
-		Where("conversation_id = ? AND user_id = ? AND role = 'user' AND deleted = 0", conversationID, userID).
-		Order("id DESC").Limit(mc.HistoryKeepTurns).
-		Find(&window).Error; err != nil || len(window) == 0 {
+	window, err := m.msgRepo.ListRecentByRole(ctx, conversationID, userID, model.MsgRoleUser, mc.HistoryKeepTurns)
+	if err != nil || len(window) == 0 {
 		return
 	}
 	historyStartID := window[len(window)-1].ID
@@ -129,12 +120,8 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 	cutoffID := window[summaryCutoffIndex(len(window))].ID
 
 	// 待摘要消息：afterID < id < cutoffID
-	var toSummarize []model.ConversationMessageDO
-	if err := m.db.WithContext(ctx).
-		Where("conversation_id = ? AND user_id = ? AND role IN ('user','assistant') AND deleted = 0 AND id > ? AND id < ?",
-			conversationID, userID, afterID, cutoffID).
-		Order("id ASC").
-		Find(&toSummarize).Error; err != nil || len(toSummarize) == 0 {
+	toSummarize, err := m.msgRepo.ListRangeForUser(ctx, conversationID, userID, afterID, cutoffID)
+	if err != nil || len(toSummarize) == 0 {
 		return
 	}
 	lastMessageID := toSummarize[len(toSummarize)-1].ID
@@ -160,7 +147,7 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 		ConversationID: conversationID, UserID: userID,
 		Content: strings.TrimSpace(content), LastMessageID: strconv.FormatInt(lastMessageID, 10),
 	}
-	if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := m.summaryRepo.Create(ctx, &row); err != nil {
 		zap.L().Error("摘要落库失败", zap.Error(err))
 		return
 	}

@@ -9,20 +9,20 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 )
 
 // MappingLoader 同义词映射加载器：Redis 缓存 → MySQL fallback
 type MappingLoader struct {
-	db  *gorm.DB
-	rdb *redis.Client
+	repo repository.TermMappingRepository
+	rdb  *redis.Client
 
 	mappingsOverride []model.TermMappingDO // 测试注入用
 }
 
-func NewMappingLoader(db *gorm.DB, rdb *redis.Client) *MappingLoader {
-	return &MappingLoader{db: db, rdb: rdb}
+func NewMappingLoader(repo repository.TermMappingRepository, rdb *redis.Client) *MappingLoader {
+	return &MappingLoader{repo: repo, rdb: rdb}
 }
 
 // Normalize 同义词归一化：按优先级依次做精确子串替换（和 Java QueryTermMappingService 一致）
@@ -92,6 +92,7 @@ func (l *MappingLoader) saveCache(ctx context.Context, ms []model.TermMappingDO)
 	}
 	raw, err := json.Marshal(ms)
 	if err != nil {
+		zap.L().Warn("term mapping cache marshal failed", zap.Error(err))
 		return
 	}
 	if err := l.rdb.Set(ctx, model.MappingCacheKey, raw, model.MappingCacheTTL).Err(); err != nil {
@@ -100,13 +101,11 @@ func (l *MappingLoader) saveCache(ctx context.Context, ms []model.TermMappingDO)
 }
 
 func (l *MappingLoader) fromDB(ctx context.Context) []model.TermMappingDO {
-	if l.db == nil {
+	if l.repo == nil {
 		return nil
 	}
-	var ms []model.TermMappingDO
-	if err := l.db.WithContext(ctx).
-		Where("enabled = 1 AND deleted = 0").
-		Find(&ms).Error; err != nil {
+	ms, err := l.repo.ListEnabled(ctx)
+	if err != nil {
 		zap.L().Warn("从 DB 加载同义词映射失败", zap.Error(err))
 		return nil
 	}

@@ -91,11 +91,11 @@ func main() {
 	go InitLLM(cfg.LLM.PrimaryProvider(), "", "", "")
 
 	// ====== 依赖装配 ======
-	userRepo := mysqlrepo.NewUserRepo(db)
-	authSvc := authsvc.NewAuthService(userRepo, authsvc.NewMD5PasswordHasher())
+	repos := mysqlrepo.New(db)
+	authSvc := authsvc.NewAuthService(repos.User, authsvc.NewMD5PasswordHasher())
 	llmSvc := llm.NewChatService(cfg)
 	prompts := prompt.NewTemplateLoader()
-	memSvc := rag.NewConversationMemory(cfg, db, rdb, llmSvc, prompts)
+	memSvc := rag.NewConversationMemory(cfg, repos.Conversation, repos.Message, repos.Summary, rdb, llmSvc, prompts)
 	embedSvc := embedding.NewService(cfg.Embedding.HTTPURL)
 	rerankSvc := rerank.NewService(cfg.Reranker.HTTPURL, cfg.RAG.RerankTopK)
 	mineruClient := mineru.NewClient(cfg.Mineru.APIToken)
@@ -109,7 +109,7 @@ func main() {
 			rag.NewIntentDirectedChannel(cfg.RAG.Search.Channels.IntentDirected, mvStore),
 			rag.NewVectorGlobalChannel(cfg.RAG.Search.Channels.VectorGlobal, true, mvStore),
 		)
-		ingestionEngine = ingestion.NewEngine(db, mineruClient, embedSvc, mvStore, cfg.Ingestion)
+		ingestionEngine = ingestion.NewEngine(repos.IngestionTask, repos.Document, repos.KnowledgeBase, repos.Chunk, cfg.Mineru.DataDir, mineruClient, embedSvc, mvStore, cfg.Ingestion)
 		if cfg.RAG.Search.Channels.WebSearch.Enabled && cfg.RAG.Search.Channels.WebSearch.APIKey != "" {
 			searchChannels = append(searchChannels,
 				rag.NewYouComWebSearchChannel(cfg.RAG.Search.Channels.WebSearch),
@@ -117,7 +117,7 @@ func main() {
 		}
 	}
 	postProcessors := []rag.PostProcessor{
-		rag.NewMetadataEnrichmentPostProcessor(db),
+		rag.NewMetadataEnrichmentPostProcessor(repos.Chunk, repos.Document),
 		&rag.DedupPostProcessor{},
 		&rag.FusionPostProcessor{RRFK: 60, RerankCandidateLimit: 50},
 		rag.NewRerankPostProcessor(rag.RerankerAdapter(rerankSvc), cfg.RAG.RerankEnabled),
@@ -125,10 +125,10 @@ func main() {
 	multiChannelEngine := rag.NewMultiChannelEngine(searchChannels, postProcessors)
 	retrievalEngine := rag.NewRetrievalEngine(cfg.RAG, multiChannelEngine, prompts)
 
-	intentLoader := rag.NewTreeLoader(db, rdb)
+	intentLoader := rag.NewTreeLoader(repos.IntentNode, rdb)
 	intentClassifier := rag.NewClassifier(intentLoader, llmSvc, prompts)
 	intentResolver := rag.NewResolver(intentClassifier)
-	mappingLoader := rag.NewMappingLoader(db, rdb)
+	mappingLoader := rag.NewMappingLoader(repos.TermMapping, rdb)
 	queryRewriter := rag.NewRewriter(mappingLoader, llmSvc, prompts, cfg.RAG.QueryRewrite)
 	guidanceDetector := rag.NewDetector(cfg.Guidance, llmSvc, prompts)
 
@@ -142,9 +142,6 @@ func main() {
 		ragPipeline.SetMcpExecutor(mcpExecutor, mcpFormatter)
 		zap.L().Info("MCP 已启用", zap.Int("servers", len(cfg.Mcp.Servers)))
 	}
-
-	// 装配 repository 层（需在 chatHandler/sessionService 前）
-	repos := mysqlrepo.New(db)
 
 	// 会话业务服务 + HTTP handler
 	sessionSvc := rag.NewSessionService(repos.Conversation, repos.Message)

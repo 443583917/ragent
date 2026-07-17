@@ -6,39 +6,41 @@ import (
 	"strings"
 	"time"
 
-	"goRAGENT/internal/model"
 	"goRAGENT/internal/config"
+	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 	"goRAGENT/pkg/prompt"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
-
-// model.ChatMessage 引用 model 包定义
 
 // chatClient LLM 同步调用抽象（*llm.ChatService 满足）
 
 // ConversationMemory 对话记忆（DB 存储，和 Java JdbcConversationMemoryStore 对应）
 type ConversationMemory struct {
-	cfg     *config.Config
-	db      *gorm.DB
-	rdb     *redis.Client
-	llm     chatClient
-	prompts *prompt.TemplateLoader
+	cfg         *config.Config
+	convRepo    repository.ConversationRepository
+	msgRepo     repository.MessageRepository
+	summaryRepo repository.SummaryRepository
+	rdb         *redis.Client
+	llm         chatClient
+	prompts     *prompt.TemplateLoader
 }
 
-func NewConversationMemory(cfg *config.Config, db *gorm.DB, rdb *redis.Client,
-	llmSvc chatClient, prompts *prompt.TemplateLoader) *ConversationMemory {
+func NewConversationMemory(cfg *config.Config, convRepo repository.ConversationRepository,
+	msgRepo repository.MessageRepository, summaryRepo repository.SummaryRepository,
+	rdb *redis.Client, llmSvc chatClient, prompts *prompt.TemplateLoader) *ConversationMemory {
 	if prompts == nil {
 		prompts = prompt.NewTemplateLoader()
 	}
-	return &ConversationMemory{cfg: cfg, db: db, rdb: rdb, llm: llmSvc, prompts: prompts}
+	return &ConversationMemory{cfg: cfg, convRepo: convRepo, msgRepo: msgRepo, summaryRepo: summaryRepo,
+		rdb: rdb, llm: llmSvc, prompts: prompts}
 }
 
 // LoadAndAppend 加载历史（摘要置顶 + 最近轮次，不含本轮），并把本轮 user 消息落库 + 会话 createOrUpdate。
 // 任何 DB 故障降级为空历史，不阻断问答。
 func (m *ConversationMemory) LoadAndAppend(ctx context.Context, conversationID, userID string, msg model.ChatMessage) []model.ChatMessage {
-	if m.db == nil {
+	if m.msgRepo == nil {
 		return nil
 	}
 	history := m.loadHistory(ctx, conversationID, userID)
@@ -54,10 +56,10 @@ func (m *ConversationMemory) LoadAndAppend(ctx context.Context, conversationID, 
 // AppendAssistant 回答完成后落库 assistant 消息（和 Java StreamChatEventHandler.onComplete 对应），
 // 返回消息 ID（用于 finish 事件回传前端做反馈），失败返回空串。落库后异步触发摘要压缩。
 func (m *ConversationMemory) AppendAssistant(ctx context.Context, conversationID, userID, content string) string {
-	if m.db == nil || strings.TrimSpace(content) == "" {
+	if m.msgRepo == nil || strings.TrimSpace(content) == "" {
 		return ""
 	}
-	id := m.appendMessage(ctx, conversationID, userID, "assistant", content)
+	id := m.appendMessage(ctx, conversationID, userID, model.MsgRoleAssistant, content)
 	m.touchConversation(ctx, conversationID, userID)
 	go m.maybeCompress(conversationID, userID)
 	return id
@@ -68,11 +70,8 @@ func (m *ConversationMemory) loadHistory(ctx context.Context, conversationID, us
 	if limit <= 0 {
 		return nil
 	}
-	var rows []model.ConversationMessageDO
-	if err := m.db.WithContext(ctx).
-		Where("conversation_id = ? AND user_id = ? AND deleted = 0", conversationID, userID).
-		Order("id DESC").Limit(limit).
-		Find(&rows).Error; err != nil {
+	rows, err := m.msgRepo.ListRecentForUser(ctx, conversationID, userID, limit)
+	if err != nil {
 		zap.L().Warn("加载对话历史失败，降级为空", zap.Error(err))
 		return nil
 	}
@@ -84,7 +83,7 @@ func (m *ConversationMemory) appendMessage(ctx context.Context, conversationID, 
 		ConversationID: conversationID, UserID: userID,
 		Role: role, Content: content,
 	}
-	if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := m.msgRepo.Create(ctx, &row); err != nil {
 		zap.L().Error("消息落库失败", zap.String("role", role), zap.Error(err))
 		return ""
 	}
@@ -93,19 +92,17 @@ func (m *ConversationMemory) appendMessage(ctx context.Context, conversationID, 
 
 // createOrUpdateConversation 首条消息建会话（标题=问题截断），已存在则刷新最后时间
 func (m *ConversationMemory) createOrUpdateConversation(ctx context.Context, conversationID, userID, question string) {
-	var count int64
-	if err := m.db.WithContext(ctx).Model(&model.ConversationDO{}).
-		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-		Count(&count).Error; err != nil {
+	exists, err := m.convRepo.ExistsForUser(ctx, conversationID, userID)
+	if err != nil {
 		zap.L().Warn("查询会话失败", zap.Error(err))
 		return
 	}
-	if count == 0 {
+	if !exists {
 		conv := model.ConversationDO{
 			ConversationID: conversationID, UserID: userID,
 			Title: truncateTitle(question, m.cfg.Memory.TitleMaxLength), LastTime: time.Now(),
 		}
-		if err := m.db.WithContext(ctx).Create(&conv).Error; err != nil {
+		if err := m.convRepo.Create(ctx, &conv); err != nil {
 			zap.L().Warn("创建会话失败", zap.Error(err))
 			return
 		}
@@ -116,9 +113,8 @@ func (m *ConversationMemory) createOrUpdateConversation(ctx context.Context, con
 				tctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if title := m.generateTitle(tctx, question); title != "" && title != conv.Title {
-					_ = m.db.WithContext(tctx).Model(&model.ConversationDO{}).
-						Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-						Update("title", title).Error
+					_ = m.convRepo.UpdateFieldsForUser(tctx, conversationID, userID,
+						map[string]any{"title": title})
 				}
 			}()
 		}
@@ -128,9 +124,8 @@ func (m *ConversationMemory) createOrUpdateConversation(ctx context.Context, con
 }
 
 func (m *ConversationMemory) touchConversation(ctx context.Context, conversationID, userID string) {
-	if err := m.db.WithContext(ctx).Model(&model.ConversationDO{}).
-		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-		Update("last_time", time.Now()).Error; err != nil {
+	if err := m.convRepo.UpdateFieldsForUser(ctx, conversationID, userID,
+		map[string]any{"last_time": time.Now()}); err != nil {
 		zap.L().Warn("更新会话时间失败", zap.Error(err))
 	}
 }
@@ -145,7 +140,7 @@ func normalizeHistory(descRows []model.ConversationMessageDO) []model.ChatMessag
 		msgs = append(msgs, model.ChatMessage{Role: descRows[i].Role, Content: descRows[i].Content})
 	}
 	start := 0
-	for start < len(msgs) && msgs[start].Role != "user" {
+	for start < len(msgs) && msgs[start].Role != model.MsgRoleUser {
 		start++
 	}
 	return msgs[start:]
@@ -163,5 +158,3 @@ func truncateTitle(s string, max int) string {
 	}
 	return string(runes[:max])
 }
-
-// DO 模型已迁移至 internal/model/conversation.go

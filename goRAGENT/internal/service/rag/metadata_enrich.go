@@ -4,16 +4,17 @@ import (
 	"context"
 
 	"goRAGENT/internal/model"
+	"goRAGENT/internal/repository"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 type MetadataEnrichmentPostProcessor struct {
-	db *gorm.DB
+	chunkRepo repository.ChunkRepository
+	docRepo   repository.DocumentRepository
 }
 
-func NewMetadataEnrichmentPostProcessor(db *gorm.DB) *MetadataEnrichmentPostProcessor {
-	return &MetadataEnrichmentPostProcessor{db: db}
+func NewMetadataEnrichmentPostProcessor(chunkRepo repository.ChunkRepository, docRepo repository.DocumentRepository) *MetadataEnrichmentPostProcessor {
+	return &MetadataEnrichmentPostProcessor{chunkRepo: chunkRepo, docRepo: docRepo}
 }
 
 func (p *MetadataEnrichmentPostProcessor) Name() string { return "MetadataEnrichment" }
@@ -38,9 +39,8 @@ func (p *MetadataEnrichmentPostProcessor) Process(ctx context.Context, chunks []
 		return chunks, nil
 	}
 
-	var chunkDOs []model.ChunkDO
-	if err := p.db.WithContext(ctx).Select("id, doc_id").
-		Where("id IN ? AND deleted = 0", chunkIDs).Find(&chunkDOs).Error; err != nil {
+	chunkDOs, err := p.chunkRepo.FindByIDs(ctx, chunkIDs)
+	if err != nil {
 		zap.L().Warn("MetadataEnrichment 查 chunk 失败", zap.Error(err))
 		return chunks, nil
 	}
@@ -57,10 +57,10 @@ func (p *MetadataEnrichmentPostProcessor) Process(ctx context.Context, chunks []
 		docIDs = append(docIDs, id)
 	}
 
-	var docDOs []model.DocumentDO
-	if len(docIDs) > 0 {
-		p.db.WithContext(ctx).Select("id, file_name").
-			Where("id IN ? AND deleted = 0", docIDs).Find(&docDOs)
+	docDOs, err := p.docRepo.FindByIDs(ctx, docIDs)
+	if err != nil {
+		zap.L().Warn("MetadataEnrichment 查 doc 失败", zap.Error(err))
+		return chunks, nil
 	}
 
 	docToName := make(map[string]string, len(docDOs))

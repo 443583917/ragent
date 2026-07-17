@@ -66,6 +66,18 @@ func (r *messageRepo) ListRecentForUser(ctx context.Context, convID, userID stri
 	return dos, nil
 }
 
+// ListRecentByRole 最近 limit 条指定角色消息（对照 maybeCompress 窗口：WHERE conversation_id=? AND user_id=? AND role=? AND deleted=0 ORDER BY id DESC LIMIT ?）。
+func (r *messageRepo) ListRecentByRole(ctx context.Context, convID, userID, role string, limit int) ([]model.ConversationMessageDO, error) {
+	var dos []model.ConversationMessageDO
+	if err := r.db.WithContext(ctx).Scopes(notDeleted).
+		Where("conversation_id = ? AND user_id = ? AND role = ?", convID, userID, role).
+		Order("id DESC").Limit(limit).
+		Find(&dos).Error; err != nil {
+		return nil, fmt.Errorf("list recent messages by role conversation_id=%s user_id=%s role=%s: %w", convID, userID, role, err)
+	}
+	return dos, nil
+}
+
 // ListRange 区间消息 afterID < id < beforeID（对照 maybeCompress 待摘要查询：
 // 仅 user/assistant 角色，ORDER BY id ASC）。
 func (r *messageRepo) ListRange(ctx context.Context, convID string, afterID, beforeID int64) ([]model.ConversationMessageDO, error) {
