@@ -41,7 +41,7 @@ func (n *NodeRef) GetKind() string {
 
 // ========== Chunk 检索结果 ==========
 
-// RetrievedChunk 检索到的文档块（和 Java RetrievedChunk 一致）
+// RetrievedChunk 检索到的文档块（）
 type RetrievedChunk struct {
 	ID       string  `json:"id"`
 	Text     string  `json:"text"`
@@ -49,7 +49,7 @@ type RetrievedChunk struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// ========== SearchChannel 接口（和 Java SearchChannel 对应）==========
+// ========== SearchChannel 接口（检索通道接口）==========
 
 // SearchChannelType 检索通道类型
 type SearchChannelType string
@@ -67,7 +67,7 @@ type VectorRetriever interface {
 	ListCollections(ctx context.Context) ([]string, error)
 }
 
-// SearchChannel 检索通道接口（和 Java 完全一致）
+// SearchChannel 检索通道接口
 type SearchChannel interface {
 	Name() string
 	Priority() int
@@ -76,7 +76,7 @@ type SearchChannel interface {
 	Type() SearchChannelType
 }
 
-// SearchContext 检索上下文（和 Java SearchContext 一致）
+// SearchContext 检索上下文
 type SearchContext struct {
 	OriginalQuestion  string                  `json:"originalQuestion"`
 	RewrittenQuestion string                  `json:"rewrittenQuestion"`
@@ -84,7 +84,7 @@ type SearchContext struct {
 	TopK              int                     `json:"topK"`
 }
 
-// ChannelResult 通道检索结果（和 Java SearchChannelResult 一致）
+// ChannelResult 通道检索结果
 type ChannelResult struct {
 	ChannelType SearchChannelType `json:"channelType"`
 	ChannelName string            `json:"channelName"`

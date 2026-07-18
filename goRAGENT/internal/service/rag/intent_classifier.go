@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// classifierPromptPath 分类 Prompt 模板（和 Java INTENT_CLASSIFIER_PROMPT_PATH 对应）
+// classifierPromptPath 分类 Prompt 模板
 const classifierPromptPath = "intent-classifier.st"
 
 // NodeScore 意图节点评分
@@ -27,7 +27,7 @@ type chatClient interface {
 	Chat(ctx context.Context, req llm.ChatRequest) (string, error)
 }
 
-// Classifier LLM 意图分类器（和 Java DefaultIntentClassifier 对应）
+// Classifier LLM 意图分类器（LLM 意图分类器）
 type Classifier struct {
 	loader  *TreeLoader
 	llm     chatClient
@@ -85,7 +85,7 @@ func (c *Classifier) ClassifyTargets(ctx context.Context, question string) []Nod
 	return scores
 }
 
-// buildIntentList 叶子节点序列化为 {intent_list}（格式和 Java buildPrompt 一致）
+// buildIntentList 叶子节点序列化为 {intent_list}
 func buildIntentList(leaves []*model.IntentNode) string {
 	var b strings.Builder
 	for i, n := range leaves {
@@ -150,7 +150,7 @@ func parseResponse(raw string, id2node map[string]*model.IntentNode) []NodeScore
 	return scores
 }
 
-// stripMarkdownCodeFence 剥离 ```json ... ``` 包裹（和 Java LLMResponseCleaner 对应）
+// stripMarkdownCodeFence 剥离 ```json ... ``` 包裹
 func stripMarkdownCodeFence(s string) string {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "```") {

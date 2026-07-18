@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// IntentKind 意图类型（数值对齐 Java：0=KB, 1=SYSTEM, 2=MCP）
+// IntentKind 意图类型（0=KB, 1=SYSTEM, 2=MCP）
 type IntentKind int
 
 const (
@@ -25,7 +25,7 @@ func (k IntentKind) String() string {
 	}
 }
 
-// IntentNode 意图树内存模型（和 Java IntentNode 一致，ID = intent_code）
+// IntentNode 意图树内存模型（ID = intent_code，内存模型）
 type IntentNode struct {
 	ID                  string        `json:"id"`
 	KbID                string        `json:"kbId,omitempty"`
@@ -45,7 +45,7 @@ type IntentNode struct {
 	ParamPromptTemplate string        `json:"paramPromptTemplate,omitempty"`
 }
 
-// IntentNodeDO t_intent_node 表映射（和 Java IntentNodeDO 一致）
+// IntentNodeDO t_intent_node 表映射（）
 type IntentNodeDO struct {
 	ID                  string    `gorm:"column:id;primaryKey"`
 	KbID                string    `gorm:"column:kb_id"`
@@ -73,7 +73,7 @@ type IntentNodeDO struct {
 
 func (IntentNodeDO) TableName() string { return "t_intent_node" }
 
-// toNode DO → 内存模型（ID 取业务标识 intent_code，对齐 Java）
+// toNode DO → 内存模型（ID 取业务标识 intent_code，）
 func (d IntentNodeDO) ToNode() *IntentNode {
 	var examples []string
 	if d.Examples != "" {

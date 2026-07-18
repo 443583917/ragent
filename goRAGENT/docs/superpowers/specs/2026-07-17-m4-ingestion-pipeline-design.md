@@ -145,7 +145,7 @@ internal/ingestion/
   engine.go      # Engine 异步执行节点链 + task 状态管理
   fetcher.go     # Fetcher: 读本地文件
   parser.go      # Parser: mineru.Client.Parse() 或 .md/.txt 直读
-  chunker.go     # Chunker: Markdown 标题混合切分 (对齐 Java)
+  chunker.go     # Chunker: Markdown 标题混合切分
   indexer.go     # Indexer: embedBatch → Milvus Insert + t_chunk 落库
 ```
 

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// intentTreeCacheKey Redis 缓存 key（和 Java IntentTreeCacheManager 一致）
+	// intentTreeCacheKey Redis 缓存 key
 	intentTreeCacheKey = "ragent:intent:tree"
 	cacheExpire        = 7 * 24 * time.Hour
 )

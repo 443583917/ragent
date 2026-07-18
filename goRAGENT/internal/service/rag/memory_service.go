@@ -16,7 +16,7 @@ import (
 
 // chatClient LLM 同步调用抽象（*llm.ChatService 满足）
 
-// ConversationMemory 对话记忆（DB 存储，和 Java JdbcConversationMemoryStore 对应）
+// ConversationMemory 对话记忆（DB 存储，对话记忆，DB 存储）
 type ConversationMemory struct {
 	cfg         *config.Config
 	convRepo    repository.ConversationRepository
@@ -44,7 +44,7 @@ func (m *ConversationMemory) LoadAndAppend(ctx context.Context, conversationID, 
 		return nil
 	}
 	history := m.loadHistory(ctx, conversationID, userID)
-	// 摘要以 system 角色包裹置顶（和 Java attachSummary 一致）
+	// 摘要以 system 角色包裹置顶
 	if summary, _ := m.loadLatestSummary(ctx, conversationID, userID); summary != "" {
 		history = append([]model.ChatMessage{{Role: "system", Content: m.decorateSummary(summary)}}, history...)
 	}
@@ -53,7 +53,7 @@ func (m *ConversationMemory) LoadAndAppend(ctx context.Context, conversationID, 
 	return history
 }
 
-// AppendAssistant 回答完成后落库 assistant 消息（和 Java StreamChatEventHandler.onComplete 对应），
+// AppendAssistant 回答完成后落库 assistant 消息（回答完成后落库 assistant 消息），
 // 返回消息 ID（用于 finish 事件回传前端做反馈），失败返回空串。落库后异步触发摘要压缩。
 func (m *ConversationMemory) AppendAssistant(ctx context.Context, conversationID, userID, content string) string {
 	if m.msgRepo == nil || strings.TrimSpace(content) == "" {
@@ -133,7 +133,7 @@ func (m *ConversationMemory) touchConversation(ctx context.Context, conversation
 // ========== 纯函数 ==========
 
 // normalizeHistory 输入按 id DESC 的最近 N 条 → 时间正序 + 去前导 assistant
-// （窗口截断可能导致孤立 assistant，需去掉以保证 user/assistant 成对，和 Java loadHistory 一致）
+// （窗口截断可能导致孤立 assistant，需去掉以保证 user/assistant 成对，）
 func normalizeHistory(descRows []model.ConversationMessageDO) []model.ChatMessage {
 	msgs := make([]model.ChatMessage, 0, len(descRows))
 	for i := len(descRows) - 1; i >= 0; i-- { // 反转为正序

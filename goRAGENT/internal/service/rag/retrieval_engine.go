@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// MultiChannelEngine 多通道检索引擎（和 Java MultiChannelRetrievalEngine 一致）
+// MultiChannelEngine 多通道检索引擎
 type MultiChannelEngine struct {
 	channels       []model.SearchChannel
 	postProcessors []PostProcessor

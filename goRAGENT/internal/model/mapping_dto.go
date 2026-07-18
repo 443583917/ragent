@@ -1,6 +1,6 @@
 package model
 
-// MappingVO 关键词映射 VO（和 Java QueryTermMappingVO / 前端 QueryTermMapping 一致）。
+// MappingVO 关键词映射 VO（和前端 QueryTermMapping 一致）。
 type MappingVO struct {
 	ID         string `json:"id"`
 	SourceTerm string `json:"sourceTerm"`

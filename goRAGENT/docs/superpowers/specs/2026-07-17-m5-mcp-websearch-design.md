@@ -19,7 +19,7 @@
 
 ### 3.1 协议
 
-自研 HTTP JSON-RPC 客户端，对标 mineru/embedding 风格，零外部依赖。MCP 协议基于 HTTP+SSE 传输，JSON-RPC 2.0 格式：
+HTTP JSON-RPC 客户端，和 mineru/embedding 风格一致，零外部依赖。MCP 协议基于 HTTP+SSE 传输，JSON-RPC 2.0 格式：
 
 ```
 POST {server_url}/message?sessionId=xxx

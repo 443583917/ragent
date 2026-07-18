@@ -54,7 +54,7 @@ func TestBuildIntentTreeVOs_MapsAllFields(t *testing.T) {
 	if vo.ID != "row-1" || vo.IntentCode != "sales" || vo.Level != 2 || vo.Kind != 2 {
 		t.Errorf("基础字段映射错误: %+v", vo)
 	}
-	if vo.Examples != `["q1","q2"]` { // 树 VO 中 examples 保持原始 JSON 字符串（对齐 Java VO）
+	if vo.Examples != `["q1","q2"]` { // 树 VO 中 examples 保持原始 JSON 字符串（对齐前端 VO）
 		t.Errorf("examples 应为原始字符串: %q", vo.Examples)
 	}
 	if vo.CollectionName != "col_s" || vo.TopK == nil || *vo.TopK != 8 || vo.McpToolID != "sales_query" {

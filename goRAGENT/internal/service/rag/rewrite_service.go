@@ -11,10 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// rewritePromptPath 改写模板（和 Java QUERY_REWRITE_AND_SPLIT_PROMPT_PATH 对应）
+// rewritePromptPath 改写模板（）
 const rewritePromptPath = "user-question-rewrite.st"
 
-// historyKeepForRewrite 改写时最多携带的历史消息条数（和 Java buildRewriteRequest 一致）
+// historyKeepForRewrite 改写时最多携带的历史消息条数（）
 const historyKeepForRewrite = 4
 
 // RewriteResult 改写结果
@@ -24,7 +24,7 @@ type RewriteResult struct {
 }
 
 // Rewriter 查询改写器：同义词归一化 → LLM 改写+子问题拆分 → 失败回退规则拆分
-// （和 Java MultiQuestionRewriteService 对应）
+// （）
 type Rewriter struct {
 	loader  *MappingLoader
 	llm     chatClient
@@ -119,7 +119,7 @@ func parseRewrite(raw string) *RewriteResult {
 
 var splitDelimiters = regexp.MustCompile(`[?？。；;\n]+`)
 
-// ruleBasedSplit 规则拆分 fallback：按 ?？。；;\n 切分，每段补问号（和 Java ruleBasedSplit 一致）
+// ruleBasedSplit 规则拆分 fallback：按 ?？。；;\n 切分，每段补问号（）
 func ruleBasedSplit(text string) []string {
 	parts := splitDelimiters.Split(text, -1)
 	var result []string

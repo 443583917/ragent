@@ -73,7 +73,7 @@ func (p *SimplePipeline) SetMcpExecutor(exec *mcp.Executor, formatter *mcp.Forma
 	p.mcpFormatter = formatter
 }
 
-// emptyRetrievalNotice 空检索短路提示文案（和 Java handleEmptyRetrieval 一致）
+// emptyRetrievalNotice 空检索短路提示文案
 const emptyRetrievalNotice = "未检索到与问题相关的文档内容。"
 
 func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCallback) (func(), error) {
@@ -99,7 +99,7 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 		subIntents = p.resolver.ResolveAll(ctx, rr.SubQuestions)
 	}
 
-	// 4. 歧义引导短路（推送选项话术，照常落库，和 Java handleGuidance 一致）
+	// 4. 歧义引导短路（推送选项话术，照常落库，歧义引导短路）
 	if p.guidance != nil {
 		if text := p.guidance.Detect(ctx, rr.Rewritten, subIntents); text != "" {
 			zap.L().Info("歧义引导短路", zap.String("question", rr.Rewritten))
@@ -109,7 +109,7 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 		}
 	}
 
-	// 5. SYSTEM 意图短路：跳过检索直答（和 Java handleSystemOnly 一致）
+	// 5. SYSTEM 意图短路：跳过检索直答（SYSTEM 意图短路直答）
 	if isSystemOnly(subIntents) {
 		zap.L().Info("SYSTEM 意图直答", zap.String("question", pipeCtx.Question))
 		return p.streamSystemResponse(ctx, pipeCtx, subIntents, wrapped), nil
@@ -158,7 +158,7 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 	}
 	pipeCtx.RetrievalCtx = &RetrievalContext{KbContext: kbText, IsEmpty: kbText == ""}
 
-	// 5. 空检索短路（和 Java handleEmptyRetrieval 一致：提示文案照常落库）
+	// 5. 空检索短路（提示文案照常落库）
 	if kbText == "" {
 		zap.L().Info("空检索短路", zap.String("question", rr.Rewritten))
 		wrapped.OnContent(emptyRetrievalNotice)
@@ -198,7 +198,7 @@ func (p *SimplePipeline) Execute(ctx context.Context, pipeCtx *Ctx, cb StreamCal
 }
 
 // singleIntentTemplate 全局仅命中单个意图且节点自带 promptTemplate 时返回该模板
-// （和 Java RAGPromptService.planPrompt 一致）
+// 
 // fallback 为默认模板文件名；当无节点模板时 load 该文件返回
 func singleIntentTemplate(subs []model.SubQuestionIntent, fallback string, tmpl *prompt.TemplateLoader) string {
 	var only *model.NodeRef
@@ -216,7 +216,7 @@ func singleIntentTemplate(subs []model.SubQuestionIntent, fallback string, tmpl 
 	return sysPrompt
 }
 
-// isSystemOnly 所有子问题都恰好命中 1 个 SYSTEM 意图（和 Java IntentResolver.isSystemOnly 一致）
+// isSystemOnly 所有子问题都恰好命中 1 个 SYSTEM 意图
 func isSystemOnly(subs []model.SubQuestionIntent) bool {
 	if len(subs) == 0 {
 		return false
@@ -234,7 +234,7 @@ func isSystemOnly(subs []model.SubQuestionIntent) bool {
 }
 
 // streamSystemResponse SYSTEM 意图直答：system（节点模板可覆盖）+ 历史 + 原问题，
-// 不带检索证据（和 Java streamSystemResponse 一致）
+// 不带检索证据（）
 func (p *SimplePipeline) streamSystemResponse(ctx context.Context, pipeCtx *Ctx,
 	subs []model.SubQuestionIntent, cb StreamCallback) func() {
 	sysPrompt := ""
@@ -262,7 +262,7 @@ func (p *SimplePipeline) streamSystemResponse(ctx context.Context, pipeCtx *Ctx,
 }
 
 // persistingCallback 包装回调：累积回答内容，完成时落库 assistant 消息
-// （和 Java StreamChatEventHandler.onComplete 对应；失败流不落库）
+// （失败流不落库）
 type persistingCallback struct {
 	inner    StreamCallback
 	mem      MemoryService

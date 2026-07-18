@@ -1,27 +1,27 @@
 # goRAGENT
 
-Ragent AI 的 Go 语言重构版本，基于 [tRPC-Agent-Go](https://github.com/trpc-group/trpc-agent-go) 框架构建的企业级 Agentic RAG 平台。
+基于 [tRPC-Agent-Go](https://github.com/trpc-group/trpc-agent-go) 框架构建的企业级 Agentic RAG 平台。
 
 ## 项目概述
 
-将原 Java 版 [Ragent AI](https://github.com/nageoffer/ragent) 后端完整重构为 Go，前端 React 保持不变。覆盖文档入库、意图识别、多通道检索、模型路由、MCP 工具调用、流式响应与全链路追踪的完整链路。
+企业级智能问答平台，覆盖文档入库、意图识别、多通道检索、模型路由、MCP 工具调用、流式响应与全链路追踪的完整链路。
 
 ## 技术栈
 
-| 领域 | 技术 | 对应 Java 版 |
-|------|------|------------|
-| 语言 | Go 1.23+ | Java 17 |
-| HTTP 框架 | Gin | Spring Boot 3.5 |
-| Agent 编排 | tRPC-Agent-Go GraphAgent | StreamChatPipeline（自研） |
-| LLM SDK | tRPC-Agent-Go model/openai | infra-ai（自研） |
-| ORM | GORM + gen | MyBatis-Plus |
-| 缓存/锁/限流 | go-redis | Redisson |
-| 向量库 | Milvus Go SDK + pgvector | Milvus Java SDK |
-| 消息队列 | RocketMQ Go Client | RocketMQ Spring Starter |
-| 鉴权 | golang-jwt | Sa-Token |
-| 可观测性 | OpenTelemetry（框架内置） | AOP @RagTraceNode |
-| 配置 | Viper | Spring @ConfigurationProperties |
-| 日志 | zap | SLF4J/Logback |
+| 领域 | 技术 |
+|------|------|
+| 语言 | Go 1.23+ |
+| HTTP 框架 | Gin |
+| Agent 编排 | tRPC-Agent-Go GraphAgent |
+| LLM SDK | tRPC-Agent-Go model/openai |
+| ORM | GORM + gen |
+| 缓存/锁/限流 | go-redis |
+| 向量库 | Milvus Go SDK + pgvector |
+| 消息队列 | RocketMQ Go Client |
+| 鉴权 | golang-jwt |
+| 可观测性 | OpenTelemetry（框架内置） |
+| 配置 | Viper |
+| 日志 | zap |
 
 ## 快速开始
 
@@ -37,7 +37,7 @@ go mod download
 cp configs/config.example.yaml configs/config.yaml
 # 编辑 config.yaml，填入数据库/Redis/LLM API Key
 
-# 启动数据库迁移
+# 启动数据库初始化
 go run cmd/server/main.go --migrate
 
 # 启动服务
@@ -55,16 +55,31 @@ goRAGENT/
 │   ├── server/main.go         # 主服务入口
 │   └── mcp-server/main.go     # MCP Server
 ├── internal/
-│   ├── framework/             # 基础设施（SSE/JWT/限流/Snowflake）
-│   ├── infra/                 # AI 层（LLM路由/Embedding/Rerank）
-│   ├── rag/                   # RAG 核心（Pipeline/意图/检索/记忆/MCP）
-│   ├── admin/                 # 管理后台 API
-│   ├── user/                  # 用户认证
-│   ├── ingestion/             # 文档入库 Pipeline
-│   └── knowledge/             # 知识库 CRUD
+│   ├── bootstrap/             # 依赖装配
+│   ├── config/                # 配置加载
+│   ├── router/                # 路由注册
+│   ├── handler/               # HTTP 层（薄 Controller）
+│   ├── service/               # 业务逻辑层
+│   │   ├── rag/               # RAG 核心（Pipeline/意图/检索/记忆/MCP）
+│   │   ├── admin/             # 管理后台服务
+│   │   ├── auth/              # 用户认证
+│   │   ├── ingestion/         # 文档入库 Pipeline
+│   │   └── mcp/               # MCP 工具集
+│   ├── repository/            # 数据访问接口
+│   │   └── mysql/             # GORM 实现
+│   ├── model/                 # 领域模型（DO/DTO/VO/常量）
+│   └── middleware/            # HTTP 中间件
+├── pkg/                       # 可复用公共库
+│   ├── llm/                   # LLM 路由/熔断/ChatService
+│   ├── embedding/             # Embedding 客户端
+│   ├── rerank/                # Rerank 客户端
+│   ├── milvus/                # 向量库客户端
+│   ├── prompt/                # Prompt 模板引擎（go:embed）
+│   ├── sse/                   # SSE 事件协议
+│   └── jwt/ / snowflake/ / logx/ / errs/ / response/ / mineru/
 ├── prompts/                   # Prompt 模板（go:embed 编译进二进制）
-├── migrations/                # PostgreSQL DDL
-├── configs/                    # 配置文件
+├── migrations/                # 数据库 DDL
+├── configs/                   # 配置文件
 ├── docs/                      # 文档
 ├── go.mod
 ├── go.sum
@@ -74,20 +89,7 @@ goRAGENT/
 
 ## 前端
 
-前端代码保持不变，位于 `../frontend/`。Go 版的对外接口（URL、SSE 事件格式、JSON 字段名）与 Java 版完全一致，前端零改动即可对接。
-
-## 与 Java 版的关系
-
-| 模块 | Java | Go | 说明 |
-|------|------|:--:|------|
-| framework | Spring Boot 自研 | Gin + 标准库 | Go 精简 50%+ 代码量 |
-| infra-ai | 自研 HTTP 客户端 | tRPC-Agent-Go model/openai | 框架内置 |
-| rag pipeline | 硬编码 8 阶段 | GraphAgent StateGraph | 动态路由 |
-| MCP | MCP Java SDK | 框架内置 MCP | 开箱即用 |
-| 意图树 | 自研 | 自研（业务逻辑不变） | 1:1 复刻 |
-| 检索引擎 | 自研 SPI | 自研（接口不变） | 1:1 复刻 |
-| 记忆管理 | 自研 | 自研 + 框架 session | 混合方案 |
-| 可观测性 | AOP @RagTraceNode | OpenTelemetry（框架内置） | 更强 |
+前端代码位于 `../frontend/`，基于 React + Vite 构建。
 
 ## 相关文档
 

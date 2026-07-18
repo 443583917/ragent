@@ -16,7 +16,7 @@ const (
 	titlePromptPath   = "conversation-title.st"
 	contextFormatPath = "context-format.st"
 
-	// summaryLockPrefix 分布式锁前缀（和 Java SUMMARY_LOCK_PREFIX 一致）
+	// summaryLockPrefix 分布式锁前缀
 	summaryLockPrefix = "ragent:memory:summary:lock:"
 	summaryLockTTL    = 30 * time.Second
 )
@@ -25,7 +25,7 @@ const (
 
 // ========== 纯函数 ==========
 
-// summaryCutoffIndex 摘要截止点 = 窗口中位（和 Java (size-1)/2 一致，摘要覆盖约一半窗口）
+// summaryCutoffIndex 摘要截止点 = 窗口中位（摘要覆盖约一半窗口）
 func summaryCutoffIndex(n int) int { return (n - 1) / 2 }
 
 // shouldSkipSummary 上次摘要已覆盖当前窗口起点则跳过
@@ -34,7 +34,7 @@ func shouldSkipSummary(afterID, historyStartID int64) bool {
 }
 
 // buildSummaryMessages 摘要 LLM 消息序列：system → [历史摘要注入] → 对话原文 → 合并指令
-// （和 Java summarizeMessages 一致）
+// 
 func buildSummaryMessages(sysPrompt string, msgs []model.ConversationMessageDO, existing string, maxChars int) []llm.Message {
 	messages := []llm.Message{{Role: "system", Content: sysPrompt}}
 	if strings.TrimSpace(existing) != "" {
@@ -74,7 +74,7 @@ func (m *ConversationMemory) loadLatestSummary(ctx context.Context, conversation
 	return row.Content, lastID
 }
 
-// ========== 摘要压缩（assistant 落库后异步触发，和 Java doCompressIfNeeded 一致）==========
+// ========== 摘要压缩（assistant 落库后异步触发，）==========
 
 func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 	defer func() {
@@ -142,7 +142,7 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 		return
 	}
 
-	// 插入新行（和 Java 一致，不更新旧行）
+	// 插入新行（不更新旧行）
 	row := model.ConversationSummaryDO{
 		ConversationID: conversationID, UserID: userID,
 		Content: strings.TrimSpace(content), LastMessageID: strconv.FormatInt(lastMessageID, 10),
@@ -155,7 +155,7 @@ func (m *ConversationMemory) maybeCompress(conversationID, userID string) {
 		zap.Int64("lastMessageId", lastMessageID), zap.Int("chars", len([]rune(row.Content))))
 }
 
-// ========== 会话标题（新会话异步生成，和 Java ConversationTitleGenerator 一致）==========
+// ========== 会话标题（新会话异步生成，）==========
 
 func (m *ConversationMemory) generateTitle(ctx context.Context, question string) string {
 	fallback := truncateTitle(question, m.cfg.Memory.TitleMaxLength)

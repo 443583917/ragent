@@ -641,7 +641,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Chunker Markdown 标题混合切分节点（对齐 Java 策略）
+// Chunker Markdown 标题混合切分节点
 type Chunker struct {
 	ChunkSize    int // 分块字符数上限
 	ChunkOverlap int // 块间重叠字符数

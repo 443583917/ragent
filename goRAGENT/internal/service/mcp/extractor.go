@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Extractor LLM 参数提取器（对齐 Java LLMMcpParameterExtractor）
+// Extractor LLM 参数提取器（）
 type Extractor struct {
 	llm     *llm.ChatService
 	prompts *prompt.TemplateLoader

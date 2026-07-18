@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// LoginUser 登录用户信息（和 Java LoginUser 一致）
+// LoginUser 登录用户信息
 type LoginUser struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`

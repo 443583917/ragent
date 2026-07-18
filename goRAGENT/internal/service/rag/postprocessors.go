@@ -7,7 +7,7 @@ import (
 	"goRAGENT/internal/model"
 )
 
-// PostProcessor 后处理器接口（和 Java SearchResultPostProcessor 一致）
+// PostProcessor 后处理器接口
 type PostProcessor interface {
 	Name() string
 	Order() int

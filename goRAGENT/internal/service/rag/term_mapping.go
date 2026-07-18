@@ -25,7 +25,7 @@ func NewMappingLoader(repo repository.TermMappingRepository, rdb *redis.Client) 
 	return &MappingLoader{repo: repo, rdb: rdb}
 }
 
-// Normalize 同义词归一化：按优先级依次做精确子串替换（和 Java QueryTermMappingService 一致）
+// Normalize 同义词归一化：按优先级依次做精确子串替换
 func (l *MappingLoader) Normalize(text string) string {
 	mappings := l.load()
 	result := text
@@ -113,7 +113,7 @@ func (l *MappingLoader) fromDB(ctx context.Context) []model.TermMappingDO {
 	return ms
 }
 
-// sortMappings priority 降序，同优先级按源词长度降序（长词优先，和 Java loadMappings 一致）
+// sortMappings priority 降序，同优先级按源词长度降序（长词优先，）
 func sortMappings(ms []model.TermMappingDO) {
 	sort.SliceStable(ms, func(i, j int) bool {
 		if ms[i].Priority != ms[j].Priority {
@@ -124,7 +124,7 @@ func sortMappings(ms []model.TermMappingDO) {
 }
 
 // applyMapping 全局子串替换；若当前位置已是 targetTerm 开头则跳过（防重复替换，
-// 和 Java QueryTermMappingUtil.applyMapping 一致）
+// ）
 func applyMapping(text, source, target string) string {
 	if source == "" || !strings.Contains(text, source) {
 		return text

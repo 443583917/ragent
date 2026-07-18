@@ -1,6 +1,6 @@
 // Package errs 提供统一错误类型，对齐 docs/development-standards.md 第三节。
 //
-// 错误分级（和 Java 版三级异常对应）：
+// 错误分级（分级错误类型）：
 //   - A 类：客户端错误（未登录/无权限）
 //   - B 类：业务错误（参数错误/业务规则不满足）
 //   - C 类：第三方远程服务错误
@@ -18,7 +18,7 @@ import (
 	"fmt"
 )
 
-// 标准错误码（和 pkg/response 及 Java BaseErrorCode 对应）
+// 标准错误码（和 pkg/response 错误码定义对应）
 const (
 	CodeNotLogin      = "A000001" // 未登录
 	CodeForbidden     = "A000002" // 无权限

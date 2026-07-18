@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// Emitter 线程安全的 SSE 连接封装（和 Java SseEmitterSender 对应）
+// Emitter 线程安全的 SSE 连接封装（线程安全的 SSE 连接封装）
 type Emitter struct {
 	w       http.ResponseWriter
 	flusher http.Flusher
@@ -76,7 +76,7 @@ func (e *Emitter) SendRaw(eventName SSEEventType, raw string) {
 	e.flusher.Flush()
 }
 
-// SendChunked 按 code point 分块发送消息（和 Java sendChunked 一致）
+// SendChunked 按 code point 分块发送消息（按 code point 分块发送）
 func (e *Emitter) SendChunked(contentType string, text string, chunkSize int) {
 	runes := []rune(text)
 	for i := 0; i < len(runes); i += chunkSize {

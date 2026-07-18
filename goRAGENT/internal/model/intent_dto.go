@@ -2,7 +2,7 @@ package model
 
 import "encoding/json"
 
-// IntentNodeTreeVO 意图树节点 VO（字段和 Java IntentNodeTreeVO / 前端 IntentNodeTree 一致）。
+// IntentNodeTreeVO 意图树节点 VO（字段和前端 IntentNodeTree 一致）。
 type IntentNodeTreeVO struct {
 	ID                  string              `json:"id"`
 	IntentCode          string              `json:"intentCode"`

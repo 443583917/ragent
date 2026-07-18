@@ -1,4 +1,4 @@
-// Package response 提供统一 HTTP 响应体（和 Java Result 对应）。
+// Package response 提供统一 HTTP 响应体（统一响应体）。
 package response
 
 import (
@@ -8,14 +8,14 @@ import (
 	"goRAGENT/pkg/errs"
 )
 
-// Result 统一响应体（和 Java Result 对应）
+// Result 统一响应体（统一响应体）
 type Result struct {
 	Code    string `json:"code"`
 	Message string `json:"message,omitempty"`
 	Data    any    `json:"data,omitempty"`
 }
 
-// 标准错误码（和 Java BaseErrorCode 对应；语义定义收敛在 pkg/errs）
+// 标准错误码（语义定义收敛在 pkg/errs）
 const (
 	CodeSuccess       = "0"
 	CodeNotLogin      = errs.CodeNotLogin

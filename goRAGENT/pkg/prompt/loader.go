@@ -12,7 +12,7 @@ import (
 //go:embed prompts/*
 var promptFS embed.FS
 
-// TemplateLoader Prompt 模板加载器（和 Java PromptTemplateLoader 对应）
+// TemplateLoader Prompt 模板加载器（Prompt 模板加载器）
 type TemplateLoader struct {
 	mu    sync.RWMutex
 	cache map[string]string            // path → content
@@ -106,7 +106,7 @@ func (l *TemplateLoader) loadSections(path string) (map[string]string, error) {
 	return sections, nil
 }
 
-// ========== 模板工具函数（和 Java PromptTemplateUtils 一致）==========
+// ========== 模板工具函数==========
 
 var (
 	multiBlankLines = regexp.MustCompile(`(\n){3,}`)

@@ -1,6 +1,6 @@
 # goRAGENT 架构设计文档
 
-> 版本: v2.0.0 | 日期: 2026-07-17 | 重构: 企业级分层架构
+> 版本: v2.0.0 | 日期: 2026-07-17 | 企业级分层架构
 
 ## 一、项目结构
 
@@ -38,12 +38,12 @@ goRAGENT/
 │   │
 │   ├── model/                      # 领域模型（纯数据结构，零 internal import）
 │   │   ├── *.go                    # DO（t_user/t_knowledge_base/… 共 14 张表）
-│   │   ├── *_dto.go                # 请求 DTO / 响应 VO（从 handler 迁入）
+│   │   ├── *_dto.go                # 请求 DTO / 响应 VO
 │   │   ├── page.go                 # PageQuery / PageResult 统一分页
 │   │   └── consts.go               # 业务常量（状态/角色/向量维度/…）
 │   │
 │   ├── middleware/                 # HTTP 中间件（auth / ratelimit / userctx）
-│   └── config/config.go            # 纯配置加载（已删除 SetDBGorm 等服务定位器）
+│   └── config/config.go            # 纯配置加载
 │
 ├── pkg/                            # 可复用公共库（不依赖 internal/ —— 存量 4 处待解耦）
 │   ├── errs/                       # 统一错误类型（AppError + 分级错误码 + Wrap）
@@ -81,22 +81,22 @@ goRAGENT/
 
 | 领域 | 选择 | 原因 |
 |------|------|------|
-| Agent 编排 | **tRPC-Agent-Go GraphAgent** | 替代硬编码 Pipeline，StateGraph + 条件边 + 短路路由 |
+| Agent 编排 | **tRPC-Agent-Go GraphAgent** | StateGraph + 条件边 + 短路路由，灵活的 DAG 编排 |
 | HTTP 层 | **Gin** | 社区最成熟，性能最高 |
 | LLM SDK | tRPC-Agent-Go **model/openai** | OpenAI 兼容协议，覆盖百炼/硅基/Ollama |
 | ORM | **GORM**（仅 repository 层使用） | 接口抽象，零散落 |
-| 分布式组件 | **go-redis** | Redisson → go-redis，配置结构一致 |
+| 分布式组件 | **go-redis** | 高性能 Redis 客户端 |
 | 向量检索 | **Milvus Go SDK** | 官方 Go SDK |
-| 鉴权 | **golang-jwt** | Sa-Token → JWT middleware |
-| 可观测性 | **OpenTelemetry**（框架内置） | 替代 AOP @RagTraceNode |
+| 鉴权 | **golang-jwt** | JWT 标准实现 |
+| 可观测性 | **OpenTelemetry**（框架内置） | 全链路追踪 |
 | 错误处理 | **pkg/errs.AppError** | 分级错误码 + Wrap 链 + 统一渲染 |
-| 日志 | **zap**（结构化） | 替代 logrus/slog |
+| 日志 | **zap**（结构化） | 高性能结构化日志 |
 
 ---
 
 ## 三、核心链路：GraphAgent StateGraph
 
-用 tRPC-Agent-Go 的 StateGraph 替代 Java 版的硬编码 8 阶段 Pipeline：
+基于 tRPC-Agent-Go 的 StateGraph 构建 RAG Pipeline：
 
 ```
                     ┌──────────────┐
@@ -136,15 +136,15 @@ goRAGENT/
                                    └────────────┘
 ```
 
-### 条件路由规则（和 Java 版完全一致）
+### 条件路由规则
 
-| 路由点 | Go 实现 | 对应 Java 代码 |
-|--------|---------|---------------|
-| classify→guidance | `state.bool("ambiguity_detected")` | `handleGuidance()` 返回 true |
-| classify→system_only | `state.bool("all_system_only")` | `handleSystemOnly()` 返回 true |
-| classify→retrieve | 以上不满足 | 默认路径 |
-| retrieve→empty | `state.bool("retrieval_empty")` | `handleEmptyRetrieval()` 返回 true |
-| retrieve→plan | 有结果 | 默认路径 |
+| 路由点 | 条件 |
+|--------|------|
+| classify→guidance | `state.bool("ambiguity_detected")` |
+| classify→system_only | `state.bool("all_system_only")` |
+| classify→retrieve | 以上不满足 |
+| retrieve→empty | `state.bool("retrieval_empty")` |
+| retrieve→plan | 有结果 |
 
 ---
 
@@ -169,7 +169,7 @@ CircuitBreaker (三态熔断器, 每个模型独立)
     └─────────┘  恢复成功  └──────┘  再失败   └──────────┘
 ```
 
-### 配置（和 Java yaml 完全一致）
+### 配置
 
 ```yaml
 ai:

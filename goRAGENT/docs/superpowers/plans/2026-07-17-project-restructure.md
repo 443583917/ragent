@@ -1,6 +1,6 @@
 # goRAGENT 工程规范与项目重构计划
 
-> 日期: 2026-07-17 | 目标: 对齐 Go 社区标准布局，抽取 router/pkg/model 层，保持 Java 设计模式
+> 日期: 2026-07-17 | 目标: 对齐 Go 社区标准布局，抽取 router/pkg/model 层，保持策略/责任链等设计模式
 
 ## 一、现状诊断
 
@@ -55,7 +55,7 @@ goRAGENT/
 | **handler 臃肿** | admin handler 文件同时包含 controller 方法 + 业务逻辑 + DB 查询 |
 | **infra/pkg 混淆** | framework 下的 sse/jwt/snowflake 是通用工具，infra 下的 llm/embedding 是外部服务 |
 | **import 路径过长** | 之前 `github.com/nageoffer/ragent/goRAGENT/...` 已改为 `goRAGENT/...` |
-| **Java 设计模式** | 策略/责任链/外观模式已实现但隐藏在不规范的结构中 |
+| **设计模式** | 策略/责任链/外观模式已实现但隐藏在不规范的结构中 |
 
 ---
 
@@ -209,9 +209,9 @@ goRAGENT/
 
 ---
 
-## 三、Java 设计模式 → Go 对照
+## 三、设计模式 → Go 对照
 
-| Java 设计模式 | Java 位置 | Go 实现 | Go 位置（新） | 保持 |
+| 设计模式 | 说明 | Go 实现 | Go 位置（新） | 保持 |
 |:--|:--|:--|:--|:--:|
 | **策略模式** | SearchChannel 接口 | SearchChannel interface | pkg/milvus/store.go | ✅ |
 | **责任链** | PostProcessor 链 | PostProcessor interface + 链式调用 | internal/service/rag/retrieval_service.go | ✅ |
@@ -219,11 +219,11 @@ goRAGENT/
 | **模板方法** | Pipeline 8 阶段 | SimplePipeline.Execute() 顺序调用 | internal/service/rag/pipeline.go | ✅ |
 | **工厂模式** | NewXxx 构造函数 | NewXxx() 函数 | 各层 | ✅ |
 | **观察者** | SSE StreamChatEventHandler | sseCallback + StreamCallback | internal/handler/chat/handler.go | ✅ |
-| **单例** | Spring @Component | init() 中创建一次 + 全局持有 | internal/bootstrap/wire.go | ✅ |
+| **单例** | 组件单例 | init() 中创建一次 + 全局持有 | internal/bootstrap/wire.go | ✅ |
 | **适配器** | RerankerAdapter | RerankerAdapter 函数 | pkg/rerank/client.go | ✅ |
 | **装饰器** | MetadataEnrichment 先于 Dedup 执行 | PostProcessor.Order() 排序 | internal/service/rag/retrieval_service.go | ✅ |
 
-**结论**: Go 版已通过接口（interface）和组合（struct embedding）自然保持了 Java 的设计模式，无需额外改动。
+**结论**: 已通过接口（interface）和组合（struct embedding）自然保持了这些设计模式，无需额外改动。
 
 ---
 

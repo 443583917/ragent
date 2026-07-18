@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// IntentMinScore 意图最低分数阈值（和 Java RAGConstant.INTENT_MIN_SCORE 一致）
+	// IntentMinScore 意图最低分数阈值
 	IntentMinScore = 0.35
-	// MaxIntentCount 单次查询最多保留意图数（和 Java RAGConstant.MAX_INTENT_COUNT 一致）
+	// MaxIntentCount 单次查询最多保留意图数
 	MaxIntentCount = 3
 )
 
@@ -32,7 +32,7 @@ func (r *Resolver) Resolve(ctx context.Context, question string) []model.SubQues
 }
 
 // ResolveAll 按子问题并行分类 + 全局 capTotalIntents 保底分配
-// （和 Java IntentResolver.resolve 对应）。失败/无命中返回空。
+// （意图解析）.。失败/无命中返回空。
 func (r *Resolver) ResolveAll(ctx context.Context, subQuestions []string) []model.SubQuestionIntent {
 	if len(subQuestions) == 0 {
 		return nil
@@ -68,7 +68,7 @@ func (r *Resolver) ResolveAll(ctx context.Context, subQuestions []string) []mode
 	return capTotalIntents(subs, MaxIntentCount)
 }
 
-// capTotalIntents 全局意图数限制（和 Java capTotalIntents 一致）：
+// capTotalIntents 全局意图数限制：
 // 1) 展平候选按分数降序；2) 每个子问题保底 1 个最高分意图；
 // 3) 剩余配额按分数从高到低分配；4) 按子问题顺序重建（无意图子问题剔除）。
 func capTotalIntents(subs []model.SubQuestionIntent, max int) []model.SubQuestionIntent {

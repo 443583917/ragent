@@ -48,7 +48,7 @@ type Config struct {
 	Mcp       McpConfig
 }
 
-// MemoryConfig 对话记忆配置（和 Java MemoryProperties 对应）
+// MemoryConfig 对话记忆配置（对话记忆配置）
 type MemoryConfig struct {
 	HistoryKeepTurns  int  // 加载最近 N 轮（N*2 条消息）
 	TitleMaxLength    int  // 会话标题最大字符数（rune）
@@ -57,7 +57,7 @@ type MemoryConfig struct {
 	SummaryMaxChars   int  // 摘要最大字符数
 }
 
-// GuidanceConfig 歧义引导配置（和 Java GuidanceProperties 对应）
+// GuidanceConfig 歧义引导配置（歧义引导配置）
 type GuidanceConfig struct {
 	Enabled             bool
 	AmbiguityScoreRatio float64 // 次高/最高 分数比值 ≥ 此值直接判歧义

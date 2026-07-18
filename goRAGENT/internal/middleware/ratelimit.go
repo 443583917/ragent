@@ -67,7 +67,7 @@ type Config struct {
 	PollIntervalMs int
 }
 
-// Limiter 公平分布式限流器（对齐 Java FairDistributedRateLimiter）
+// Limiter 公平分布式限流器（）
 type Limiter struct {
 	rdb *redis.Client
 	cfg Config

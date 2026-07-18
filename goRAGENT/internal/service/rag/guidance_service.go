@@ -21,7 +21,7 @@ const (
 
 // chatClient LLM 同步调用抽象
 
-// Detector 歧义引导检测器（和 Java IntentGuidanceService + AmbiguityLLMChecker 对应）
+// Detector 歧义引导检测器（歧义引导检测器）
 type Detector struct {
 	cfg     config.GuidanceConfig
 	llm     chatClient
@@ -36,7 +36,7 @@ func NewDetector(cfg config.GuidanceConfig, llmSvc chatClient, prompts *prompt.T
 }
 
 // Detect 检测歧义并返回引导话术；空串表示无需引导。
-// 算法（和 Java detectAmbiguity 一致）：
+// 算法：
 //   - 仅单子问题时检测；候选 = KB 意图按 ID 聚合取最高分、降序
 //   - ratio = 次高/最高：< threshold-margin 明确；≥ threshold 直接歧义；
 //     [threshold-margin, threshold) LLM 二次确认（失败保守判歧义）
@@ -123,7 +123,7 @@ func (d *Detector) buildGuidancePrompt(ranked []model.NodeScore) string {
 }
 
 // rankCandidates KB 意图按 ID 聚合取最高分，按分数降序
-// （Java 按 CATEGORY 系统级聚合；Go 分类输出为叶子节点，简化为按 ID 聚合）
+// （按 ID 聚合）
 func rankCandidates(subs []model.SubQuestionIntent) []model.NodeScore {
 	best := map[string]model.NodeScore{}
 	for _, s := range subs {

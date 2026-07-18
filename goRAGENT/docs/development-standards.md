@@ -120,7 +120,7 @@ func Bad2() error {
 ### 自定义错误类型
 
 ```go
-// internal/framework/response/errors.go（和 Java 版三级异常对应）
+// pkg/errs/errs.go（统一分级错误类型）
 type AppError struct {
     Code    string // 错误码 "A000001"
     Message string // 用户可读的描述

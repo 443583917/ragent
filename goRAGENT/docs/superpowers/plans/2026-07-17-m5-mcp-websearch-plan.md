@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- MCP 协议：HTTP JSON-RPC 2.0 自研，零外部 SDK 依赖（和 mineru/embedding 风格一致）
+- MCP 协议：HTTP JSON-RPC 2.0，零外部 SDK 依赖（和 mineru/embedding 风格一致）
 - MCP Server 列表：`MCP_SERVERS` JSON env var，`[]McpServerConfig`
 - LLM 参数提取用 prompt 模板 `mcp-parameter-extract.st`（system）+ `mcp-parameter-extract-user.st`（user），temp=0.1
 - You.com API：`GET https://api.ydc-index.io/search` + `Authorization: Bearer` header，priority=20
@@ -566,7 +566,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Extractor LLM 参数提取器（对齐 Java LLMMcpParameterExtractor）
+// Extractor LLM 参数提取器
 type Extractor struct {
 	llm     *llm.ChatService
 	prompts *prompt.TemplateLoader

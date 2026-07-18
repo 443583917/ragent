@@ -19,7 +19,7 @@ func NewHandler(svc svcadmin.Services) *Handler {
 
 // ========== 路由表 ==========
 
-// 关键词映射 CRUD（对齐 Java QueryTermMappingController）
+// 关键词映射 CRUD
 func (h *Handler) ListMappings(c *gin.Context)  { h.listMappings(c) }
 func (h *Handler) GetMapping(c *gin.Context)    { h.getMapping(c) }
 func (h *Handler) CreateMapping(c *gin.Context) { h.createMapping(c) }
